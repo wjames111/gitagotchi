@@ -1,0 +1,79 @@
+# species: chick — signature: head-bob peck; accessory anchor on the crest feather (design.md §6.3)
+mini (o)>
+neck 2 3
+head 0 3
+
+@idle_1
+   \\,
+  (@@@)>
+   (  )
+   ¨ ¨
+@end
+
+@idle_2
+   \\,
+  (@@@)>
+   (  )
+    ¨¨
+@end
+
+@sleep_1
+   \\,   z
+  (@@@)>
+   (__)
+@end
+
+@sleep_2
+   \\,  Z
+  (@@@)>
+   (__)
+@end
+
+@eat_1
+   \\,
+  (@@@)>
+   (  )  \≋≋≋/
+@end
+
+@eat_2
+   \\,
+  (@@@)
+    v≋≋/ (  )
+@end
+
+@eat_3
+   \\,
+  (@@@)>
+   (  )  \__/
+@end
+
+@sick
+   \\,
+  (@@@)>
+   (  )
+@end
+
+@celebrate
+  ✦ \\, ✦
+  \(@@@)/
+    (  )
+@end
+
+@belly
+   \\,
+  (@@@)>
+  (    )
+   ¨ ¨
+@end
+
+@young
+  (@@@)>
+   ¨¨
+@end
+
+@mask
+.........
+.........
+....##...
+.........
+@end

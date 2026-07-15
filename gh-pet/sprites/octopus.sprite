@@ -1,0 +1,69 @@
+# species: octopus — signature: tentacle sway, whole lower row alternates (design.md §6.3)
+mini o/|\
+neck 2 3
+head 0 3
+
+@idle_1
+  .───.
+ ( @@@ )
+ /|/|\|\
+@end
+
+@idle_2
+  .───.
+ ( @@@ )
+ \|\|/|/
+@end
+
+@sleep_1
+  .───.   z
+ ( @@@ )
+ /|/|\|\
+@end
+
+@sleep_2
+  .───.  Z
+ ( @@@ )
+ /|/|\|\
+@end
+
+@eat_1
+  .───.
+ ( @@@ )
+ /|/|\|\  \≋≋≋/
+@end
+
+@eat_2
+  .───.
+ ( @@@ )
+ /|\≋≋/|\
+@end
+
+@eat_3
+  .───.
+ ( @@@ )
+ /|/|\|\  \__/
+@end
+
+@sick
+  .───.
+ ( @@@ )
+ /|/|\|\
+@end
+
+@celebrate
+✦ .───. ✦
+ ( @@@ )
+ \|/|\|/
+@end
+
+@young
+ ( @@@ )
+  /|\
+@end
+
+@mask
+...###...
+.........
+.........
+@end

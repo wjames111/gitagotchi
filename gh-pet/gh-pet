@@ -1,0 +1,1171 @@
+#!/usr/bin/env bash
+# gitagotchi — a terminal Tamagotchi whose entire life is derived from your
+# GitHub account. pet_state = f(github_data, wall_clock); nothing is stored,
+# nothing is sent anywhere. (plan.md §1)
+#
+# usage: gh-pet [login] [flags]
+#        gh-pet compare <login> [--snapshot]
+#        gh-pet badge [login]   render the pet as SVG to stdout (README embed)
+# flags: --snapshot   render one frame to stdout as plain text and exit
+#        --ascii      force glyph tier A (pure ASCII)
+#        --no-scrape  skip the achievements scrape (plan.md §4)
+#        --no-links   disable OSC 8 hyperlinks
+#        --fixtures D derive the pet from recorded API fixtures (offline)
+#        --demo X     stage an animation on a loop: wake | eat | celebrate | tired | wired | curious | social | reviewer | skinny | chubby | hatch | love | sleep | fit | unfit | stretcher | fetch | messy | wise
+#        --panel P    with --snapshot: vitals | activity | friends | feed
+
+# bash ≥ 4 required (plan.md §12); macOS ships 3.2 — hop to brew bash
+if (( BASH_VERSINFO[0] < 4 )); then
+  for _b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [[ -x $_b ]] && exec "$_b" "$0" "$@"
+  done
+  echo "gh-pet: bash >= 4 required (try: brew install bash)" >&2
+  exit 1
+fi
+
+SRC=${BASH_SOURCE[0]}
+while [[ -L $SRC ]]; do SRC=$(readlink "$SRC"); done
+BASE_DIR=$(cd "$(dirname "$SRC")" && pwd)
+LIB_DIR="$BASE_DIR/lib"
+SPRITE_DIR="$BASE_DIR/sprites"
+
+source "$LIB_DIR/util.sh"
+source "$LIB_DIR/fetch.sh"
+source "$LIB_DIR/sprites.sh"
+source "$LIB_DIR/pixel.sh"
+source "$LIB_DIR/derive.sh"
+source "$LIB_DIR/render.sh"
+source "$LIB_DIR/screens.sh"
+source "$LIB_DIR/dense.sh"
+source "$LIB_DIR/panels.sh"
+source "$LIB_DIR/badge.sh"
+source "$LIB_DIR/input.sh"
+
+have jq   || die "jq is required"
+have curl || die "curl is required"
+
+# ── args ────────────────────────────────────────────────────────────────────
+OPT_ASCII=0 OPT_NOSCRAPE=0 OPT_NOLINKS=0 OPT_SNAPSHOT=0
+FIXDIR="" CMD=pet ARG_LOGIN="" CMP_LOGIN="" DENSE_FORCE="" DEMO="" PANEL=""
+while (( $# )); do
+  case $1 in
+    --ascii) OPT_ASCII=1 ;;
+    --dense) DENSE_FORCE=1 ;;
+    --cozy)  DENSE_FORCE=0 ;;
+    --no-scrape) OPT_NOSCRAPE=1 ;;
+    --no-links) OPT_NOLINKS=1 ;;
+    --snapshot) OPT_SNAPSHOT=1 ;;
+    --fixtures) shift; FIXDIR=$(cd "$1" 2>/dev/null && pwd) || die "bad fixtures dir: $1" ;;
+    --version|-v) echo "gh-pet $VERSION"; exit 0 ;;
+    --diag) CMD=diag ;;
+    --demo) shift; DEMO=${1:-wake} ;;
+    --panel) shift; PANEL=${1:-} ;;   # with --snapshot: vitals|activity|friends|feed
+    --help|-h) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    compare) CMD=compare; shift; CMP_LOGIN=${1:-}; [[ -n $CMP_LOGIN ]] || die "compare needs a login" ;;
+    badge) CMD=badge ;;
+    -*) die "unknown flag: $1" ;;
+    *) ARG_LOGIN=$1 ;;
+  esac
+  shift
+done
+
+init_glyphs "$(detect_tier)"
+pix_detect_mode
+pix_db_load || true
+# truecolor terminals get the mockup's exact heart/ice hues
+if [[ $PIX_MODE == T ]]; then
+  C_HEARTS=$'\e[38;2;247;120;186m'   # #f778ba
+  C_ICE=$'\e[38;2;121;192;242m'      # #79c0f2
+fi
+auth_init
+
+if [[ $CMD == diag ]]; then
+  # same tty-first read as term_size (defined below, after the traps)
+  _dsz=$(stty size </dev/tty 2>/dev/null) || _dsz=
+  if [[ $_dsz =~ ^([0-9]+)\ ([0-9]+)$ ]]; then
+    LINES=${BASH_REMATCH[1]}; COLS=${BASH_REMATCH[2]}
+  else
+    COLS=$(tput cols 2>/dev/null); LINES=$(tput lines 2>/dev/null)
+  fi
+  [[ $COLS =~ ^[0-9]+$ ]] || COLS=0
+  [[ $LINES =~ ^[0-9]+$ ]] || LINES=0
+  echo "gh-pet $VERSION — render diagnostics"
+  echo "  terminal size   : ${COLS}×${LINES}   (dense needs ≥ 110×32; forced ≥ 84×26)"
+  echo "  TERM            : ${TERM:-<unset>}"
+  echo "  TERM_PROGRAM    : ${TERM_PROGRAM:-<unset>}"
+  echo "  COLORTERM       : ${COLORTERM:-<unset>}"
+  echo "  glyph tier      : $TIER (A=ascii, B=unicode)"
+  echo "  pixel mode      : ${PIX_MODE:-none} (T=truecolor half-block, 256=ANSI-256, none=ASCII sprites)"
+  echo "  pixel species   : ${#PIX_SPECIES[@]} loaded from $(pix_file)"
+  echo "  auth            : $AUTH_MODE"
+  echo "  dense layout    : YES — default at every size (d or --cozy for the minimal layout)"
+  printf '  truecolor test  : \e[38;2;255;80;80m██\e[0m\e[38;2;80;255;120m██\e[0m\e[38;2;80;140;255m██\e[0m  ← smooth red/green/blue = truecolor works\n'
+  exit 0
+fi
+
+# ── resolve who we are ──────────────────────────────────────────────────────
+ME=""
+if [[ -n $FIXDIR ]]; then
+  ME=$(jq -r '.login // "fixture-user"' "$FIXDIR/user.json" 2>/dev/null || echo fixture-user)
+elif [[ -n $TOKEN ]]; then
+  if [[ -f $CACHE_ROOT/.me ]]; then ME=$(cat "$CACHE_ROOT/.me")
+  else
+    ME=$(curl -sS --max-time 10 -H "Authorization: Bearer $TOKEN" "$API/user" 2>/dev/null | jq -r '.login // empty')
+    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s' "$ME" > "$CACHE_ROOT/.me"; }
+  fi
+fi
+TARGET=${ARG_LOGIN:-$ME}
+[[ -z $TARGET ]] && die "no login: run 'gh auth login' or pass one (gh-pet <login>)"
+SELF=0; [[ $TARGET == "$ME" || -n $FIXDIR ]] && SELF=1
+
+declare -A S F TMPF
+declare -a FR_LOGINS=() FR_SORTED=() VPOOL=() VPOOL_URL=() FLOATERS=() FL_DIR=()
+declare -A FRROW FR_FETCHED
+
+# ── session-local animation state (the one legal non-derived state, §1) ─────
+TICK=0 PET_XOFF=0 WANDER_TGT=0
+ANIM_STATE=idle ANIM_FRAME=idle_1 ANIM_BLINK=0
+NEXT_BLINK=20 BLINK_UNTIL=-1 NEXT_SWAP=0 IDLE_ALT=0
+EAT_UNTIL=-1 EAT_PHASE=0 CELEB_UNTIL=-1 STRETCH_UNTIL=-1 PERK_UNTIL=-1
+WAKE_UNTIL=-1 WAKE_PHASE=0 PREV_HIB=""
+HATCH_UNTIL=-1 HATCH_PHASE=3 HATCH_TILT=0 PREV_STAGE=""
+FLASH_TEXT="" FLASH_URL="" FLASH_UNTIL=-1 BADGE_BLINK_UNTIL=-1
+VOICE_CUR="" VOICE_URL="" VOICE_AT=-999 INSIGHT=""
+SEL_STAT=0 SEL_FRIEND=${GITAGOTCHI_FSEL:-0} DSEL=-1   # FSEL: test/preview knob
+MODE=main HELP=0 CMP_FROM=friends FVIEW=""
+# expanded panel state (lib/panels.sh): source assoc, owner flag, return mode
+XSRC=S XSELF=1 XFROM=main FEED_FILTER=0 SEL_FEED=0
+ACT_RANGE=${GITAGOTCHI_ACT_RANGE:-60}   # 14 | 60 | 365 (env: test/preview knob)
+FEEDX_N=0 FEEDX_SEL_URL="" PV_LOGIN=""
+CSEL=${GITAGOTCHI_CSEL:--1}   # inspected composition row (panels.sh)
+MSEL=-1 MFEED_SEL=-1 MFEED_URL="" DFEED_VIS=0   # main-screen tab cursor
+declare -a FEED_FLOATERS=()   # glee flying feed → pet (session theater)
+declare -a FR_FLOATERS=()     # glee rising from the friends card
+declare -A PREV_FRSTAGE       # friend stage last seen (session-only)
+GLEE_TX=12 GLEE_TY=4          # flight target: set to the pet's mouth each draw
+VSEL=0 VX_TWO=1               # one cursor across both vitals panels
+declare -A PV
+declare -A VPET1 VPET2 VPET3   # visitor pets on the stage (social cameo)
+VPET_KEY=""
+FETCH_PID="" FETCH_KIND="" FR_PENDING="" FR_NEXT_AT=0
+NEXT_REFRESH=0 LAST_FORCE=0
+PREV_MERGE="" PREV_MEDALS=-1 PREV_FOLLOWERS=-1 PREV_MAIL=-1 PREV_REVREQ=-1
+RESIZED=0 IN_ALT=0
+RANDOM=$$
+
+cleanup() {
+  [[ -n $FETCH_PID ]] && kill "$FETCH_PID" 2>/dev/null
+  if (( IN_ALT )); then
+    tput rmcup 2>/dev/null
+    tput cnorm 2>/dev/null
+    stty sane 2>/dev/null
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+trap 'RESIZED=1' WINCH
+
+# read the size off the tty itself: `tput cols` inside $( ) has a pipe for
+# stdout and (with 2>/dev/null) nothing tty-like left to ioctl, so ncurses
+# quietly answers the terminfo default — 80 — no matter how wide the window
+# really is. stty with stdin bound to /dev/tty always sees the real winsize.
+term_size() {
+  local sz=
+  sz=$(stty size </dev/tty 2>/dev/null) || sz=
+  if [[ $sz =~ ^([0-9]+)\ ([0-9]+)$ ]]; then
+    LINES=${BASH_REMATCH[1]}; COLS=${BASH_REMATCH[2]}
+  else
+    COLS=$(tput cols 2>/dev/null || echo 80); LINES=$(tput lines 2>/dev/null || echo 24)
+  fi
+}
+
+enter_alt() {
+  (( IN_ALT )) && return
+  tput smcup 2>/dev/null; tput civis 2>/dev/null; stty -echo 2>/dev/null
+  IN_ALT=1
+}
+
+center() { # text → centered line for current COLS
+  local t=$1
+  local pad=$(( (COLS - ${#t}) / 2 )); (( pad < 0 )) && pad=0
+  printf '%s%s\n' "$(repeat_str " " "$pad")" "$t"
+}
+
+# ── onboarding (§5.1): auth resolution IS the onboarding, rendered as theater ─
+onboarding() {
+  local skip=0 k
+  printf '\e[2J\e[H'
+  echo; echo; echo
+  center "gitagotchi"
+  echo
+  if [[ $AUTH_MODE == none ]]; then
+    center "${G_DOT_NONE} no token — public data only          "
+  else
+    center "${G_DOT_OK} found $AUTH_MODE token          @$TARGET"
+  fi
+  fetch_slow "$TARGET" "$SELF"
+  local uid; uid=$(jq -r '.id // "?"' "$CACHE_ROOT/$TARGET/user.json" 2>/dev/null)
+  center "${G_DOT_OK} fetching account         id ${uid:-?}"
+  fetch_medium "$TARGET" "$SELF"; fetch_fast "$TARGET" "$SELF"
+  derive_state "$TARGET" || true
+  load_state S "$TARGET" || die "could not derive pet (no data for $TARGET)"
+  local seedhex; seedhex=$(printf '%02x%02x' "${SEED[0]}" "${SEED[1]}")
+  center "${G_DOT_OK} deriving pet             seed ${seedhex}…"
+  center "● first sight…"
+  read_key 0.9; k=$KEY; [[ -n $k ]] && skip=1
+  # beat B — the egg (6 ticks); a key skips ahead
+  if (( ! skip )) && [[ ${S[STAGE]} != egg ]]; then
+    local t tint; tint=$(fg "${S[COLOR256]:-180}")
+    for t in 0 1 2 3 4 5; do
+      printf '\e[2J\e[H'; echo; echo; echo; echo
+      local tilt=0
+      (( t % 4 == 1 )) && tilt=-1; (( t % 4 == 3 )) && tilt=1; (( t == 5 )) && tilt=2
+      egg_frame "$tilt" "$tint"
+      local l; for l in "${SPCOMP_COL[@]}"; do center "$l"; done
+      echo; center "( tap… )"
+      read_key 0.25; k=$KEY; [[ -n $k ]] && { skip=1; break; }
+    done
+    # beat C — reveal
+    if (( ! skip )); then
+      printf '\e[2J\e[H'; echo; echo
+      center "${G_SPARK}   \\|/   ${G_SPARK}"
+      ANIM_FRAME=idle_1
+      pet_compose S idle_1 0 0
+      local l; for l in "${PET_LINES[@]}"; do center "$l"; done
+      echo
+      center "── ${S[NAME]}! ──"
+      center "the ${S[SPECIES_LABEL]:-${S[SPECIES]}} · ${S[STAGE]} · est. ${S[CREATED_YEAR]}"
+      read_key 1.6
+    fi
+  fi
+}
+
+# ── data refresh plumbing ───────────────────────────────────────────────────
+spawn_refresh() {
+  [[ -n $FIXDIR ]] && return
+  [[ -n $FETCH_PID ]] && kill -0 "$FETCH_PID" 2>/dev/null && return
+  local want_hist=0; dense_active && want_hist=1
+  ( fetch_fast "$TARGET" "$SELF"
+    fetch_medium "$TARGET" "$SELF"
+    fetch_slow "$TARGET" "$SELF"
+    # derive in the background too — the 4 fps loop never blocks (P4)
+    derive_state "$TARGET" || true
+    (( want_hist )) && derive_history "$TARGET" ) >/dev/null 2>&1 &
+  FETCH_PID=$! FETCH_KIND=self
+}
+
+spawn_friend_fetch() { # login
+  [[ -n $FIXDIR ]] && return
+  [[ -n $FETCH_PID ]] && kill -0 "$FETCH_PID" 2>/dev/null && return
+  (( $(date +%s) < FR_NEXT_AT )) && return
+  ( fetch_all "$1" 0 ) >/dev/null 2>&1 &
+  FETCH_PID=$! FETCH_KIND="friend:$1"
+}
+
+friend_row_load() { # login → FRROW[login]
+  local login=$1
+  derive_state "$login" 2>/dev/null || return 1
+  local -A T=()
+  load_state T "$login" || return 1
+  local state="-"
+  if [[ ${T[HIB]} == 1 ]]; then state="hib:${T[DAYS_QUIET]}"
+  elif [[ ${T[STAGE]} == egg ]]; then
+    local hd=$(( 7 - T[ACCT_DAYS] )); (( hd < 1 )) && hd=1
+    state="egg:$hd"
+  fi
+  # preview knobs: pretend a friend was an egg / hatchling at first sight, so
+  # the real hatch / level-up celebration fires on their very next derive
+  if [[ -z ${PREV_FRSTAGE[$login]:-} ]]; then
+    [[ $login == "${GITAGOTCHI_PRETEND_HATCH:-}" ]] && PREV_FRSTAGE[$login]=egg
+    [[ $login == "${GITAGOTCHI_PRETEND_LEVEL:-}" ]] && PREV_FRSTAGE[$login]=hatchling
+  fi
+  # a friend's life moves: hatching gets confetti, growing up gets sparkles
+  local prevst=${PREV_FRSTAGE[$login]:-}
+  if [[ -n $prevst && $prevst != "${T[STAGE]}" ]]; then
+    if [[ $prevst == egg ]]; then
+      spawn_friend_glee hatch
+      FLASH_TEXT="@${login}'s ${T[NAME]} hatched ${G_SPARK}"; FLASH_URL="https://github.com/$login"
+      FLASH_UNTIL=$((TICK + 16))
+    elif (( $(stage_rank "${T[STAGE]}") > $(stage_rank "$prevst") )); then
+      spawn_friend_glee level
+      FLASH_TEXT="@${login}'s ${T[NAME]} grew up: ${T[STAGE]} ${G_SPARK}"; FLASH_URL="https://github.com/$login"
+      FLASH_UNTIL=$((TICK + 16))
+    fi
+  fi
+  PREV_FRSTAGE[$login]=${T[STAGE]}
+  FRROW[$login]="${T[NAME]}|${T[MINI]}|${T[COLOR256]}|${T[HAPPINESS]}|$state|${T[STAGE]}|${T[SPECIES]}|${T[COLOR_HEX]}"
+  printf -v "FR_FETCHED[$login]" '%(%s)T' -1   # rows go stale after TTL_FRIEND
+}
+
+friends_init() {
+  FR_LOGINS=()
+  local ff="$CACHE_ROOT/$TARGET/following.json"
+  [[ -f $ff ]] && mapfile -t FR_LOGINS < <(jq -r '.[].login' "$ff" 2>/dev/null)
+  local l
+  for l in "${FR_LOGINS[@]}"; do
+    [[ -n ${FRROW[$l]:-} ]] && continue
+    [[ -f $CACHE_ROOT/$l/state.env ]] && friend_row_load "$l"
+  done
+  friends_sort
+}
+
+friends_sort() {
+  # awake by happiness desc; eggs next; hibernating pinned to the bottom (§5.5)
+  local awake="" eggs="" hibs="" l row
+  for l in "${FR_LOGINS[@]}"; do
+    row=${FRROW[$l]:-}
+    if [[ -z $row ]]; then awake+="000|$l"$'\n'
+    else
+      local happy state
+      happy=$(cut -d'|' -f4 <<<"$row"); state=$(cut -d'|' -f5 <<<"$row")
+      case $state in
+        hib:*) hibs+="$(printf '%03d' "${state#hib:}")|$l"$'\n' ;;
+        egg:*) eggs+="$l"$'\n' ;;
+        *) awake+="$(printf '%03d' "${happy:-0}")|$l"$'\n' ;;
+      esac
+    fi
+  done
+  FR_SORTED=()
+  while IFS='|' read -r _ l; do [[ -n $l ]] && FR_SORTED+=("$l"); done < <(sort -r <<<"$awake")
+  while IFS= read -r l; do [[ -n $l ]] && FR_SORTED+=("$l"); done <<<"$eggs"
+  while IFS='|' read -r _ l; do [[ -n $l ]] && FR_SORTED+=("$l"); done < <(sort <<<"$hibs")
+}
+
+reap_fetch() {
+  [[ -z $FETCH_PID ]] && return
+  kill -0 "$FETCH_PID" 2>/dev/null && return
+  wait "$FETCH_PID" 2>/dev/null
+  FETCH_PID=""
+  case $FETCH_KIND in
+    self)
+      [[ -f $CACHE_ROOT/$TARGET/state.env ]] || derive_state "$TARGET" 2>/dev/null || true
+      load_state S "$TARGET" && dfeed_load "${S[FEED_RAW]:-}"
+      react_to_changes
+      friends_init
+      NEXT_REFRESH=$(( $(date +%s) + TTL_FAST ))
+      ;;
+    friend:*)
+      local fl=${FETCH_KIND#friend:}
+      friend_row_load "$fl"
+      friends_sort
+      FR_NEXT_AT=$(( $(date +%s) + 3 ))   # search API is 30 req/min — pace friends
+      [[ $MODE == friend && $FVIEW == "$fl" ]] && load_state F "$fl"
+      ;;
+  esac
+  FETCH_KIND=""
+}
+
+react_to_changes() {
+  # eating — the payoff moment (§5.3): a poll detects a newly merged PR
+  if [[ -n ${S[MERGE_NUM]} && $PREV_MERGE != "" && ${S[MERGE_NUM]} != "$PREV_MERGE" ]]; then
+    EAT_UNTIL=$((TICK + 12)); EAT_PHASE=1
+    FETCH_UNTIL=$((TICK + 32))   # dessert: a game of fetch after the meal
+    FLASH_TEXT="PR #${S[MERGE_NUM]} merged"; FLASH_URL=${S[MERGE_URL]}
+    FLASH_UNTIL=$((TICK + 8))
+    spawn_feed_glee merge
+  fi
+  PREV_MERGE=${S[MERGE_NUM]:-}
+  # celebrate: new medal or follower burst (§8.4)
+  local nm; nm=$(awk -F';' '{print NF}' <<<"${S[MEDALS_RAW]:-}")
+  [[ -z ${S[MEDALS_RAW]:-} ]] && nm=0
+  if (( PREV_MEDALS >= 0 && (nm > PREV_MEDALS || ${S[FOLLOWERS]:-0} > PREV_FOLLOWERS) )); then
+    CELEB_UNTIL=$((TICK + 8))
+    spawn_feed_glee shine
+  fi
+  PREV_MEDALS=$nm; PREV_FOLLOWERS=${S[FOLLOWERS]:-0}
+  # new mail / review request: badge blinks twice, pet perks its ears (§5.2)
+  if (( PREV_MAIL >= 0 && (${S[MAIL]:-0} > PREV_MAIL || ${S[REVIEW_REQ]:-0} > PREV_REVREQ) )); then
+    BADGE_BLINK_UNTIL=$((TICK + 8)); PERK_UNTIL=$((TICK + 8))
+  fi
+  PREV_MAIL=${S[MAIL]:-0}; PREV_REVREQ=${S[REVIEW_REQ]:-0}
+  # wake-up (§5.3): first event after hibernation → cocoon cracks like the
+  # hatch egg, one stretch, ❄ values fade to live over the last ticks
+  if [[ $PREV_HIB == 1 && ${S[HIB]:-0} == 0 ]]; then
+    WAKE_UNTIL=$((TICK + 16))
+    FLASH_TEXT="${S[NAME]} wakes up ${G_SPARK}"; FLASH_URL=""
+    FLASH_UNTIL=$((TICK + 16))
+  fi
+  PREV_HIB=${S[HIB]:-0}
+  # hatch day (§5.9): the egg stage ends → wobble, crack, hello world
+  if [[ -n $PREV_STAGE && $PREV_STAGE == egg && ${S[STAGE]:-} != egg ]]; then
+    HATCH_UNTIL=$((TICK + 24))
+    spawn_friend_glee hatch
+    FLASH_TEXT="${S[NAME]} hatched ${G_SPARK} welcome!"; FLASH_URL=""
+    FLASH_UNTIL=$((TICK + 24))
+  fi
+  PREV_STAGE=${S[STAGE]:-}
+}
+
+# glee floats up from the feed panel when something good lands there:
+# ♥ for merges (the pet ate), ✦ for medals and follower bursts
+spawn_feed_glee() { # merge | shine — records: age|frac|width|glyph|color
+  local i
+  if [[ $1 == merge ]]; then
+    # dinner is served: food rises from the feed, the pet narrates
+    local -a menu=(🍕 🍪 🍎 🍖 🍩 🍇)
+    local fw=2
+    [[ $TIER == A ]] && { menu=("o" "*" "o"); fw=1; }
+    for i in 0 1 2; do
+      FEED_FLOATERS+=("$(( -3 * i ))|$(( RANDOM % 90 ))|$fw|${menu[RANDOM % ${#menu[@]}]}|$C_MAILC")
+    done
+    local nom="nom nom nom"
+    [[ $TIER == A ]] && nom="nom nom"
+    FEED_FLOATERS+=("-5|$(( 20 + RANDOM % 50 ))|${#nom}|$nom|${C_HEARTS}${C_ITAL}")
+  else
+    for i in 0 1 2; do
+      FEED_FLOATERS+=("$(( -3 * i ))|$(( RANDOM % 90 ))|1|$G_SPARK|$C_MAILC")
+    done
+  fi
+  (( ${#FEED_FLOATERS[@]} > 14 )) && FEED_FLOATERS=("${FEED_FLOATERS[@]: -14}")
+}
+stage_rank() { # life stage → order
+  case $1 in egg) echo 0;; hatchling) echo 1;; kid) echo 2;; adult) echo 3;; elder) echo 4;; *) echo -1;; esac
+}
+spawn_friend_glee() { # hatch | level — confetti / sparkles over the friends card
+  local i
+  if [[ $1 == hatch ]]; then
+    local -a party=("$C_MAILC" "$C_HEARTS" "$C_GREEN" "$C_SCROLLC")
+    local -a bits=("$G_SPARK" "·" "*" "$G_SPARK")
+    [[ $TIER == A ]] && bits=("*" "." "*" "*")
+    for i in 0 1 2 3 4 5 6 7; do
+      FR_FLOATERS+=("$(( -2 * (i / 2) ))|$(( RANDOM % 95 ))|1|${bits[i % 4]}|${party[RANDOM % 4]}")
+    done
+  else
+    for i in 0 1 2; do
+      FR_FLOATERS+=("$(( -3 * i ))|$(( RANDOM % 95 ))|1|$G_SPARK|$C_MAILC")
+    done
+  fi
+  (( ${#FR_FLOATERS[@]} > 16 )) && FR_FLOATERS=("${FR_FLOATERS[@]: -16}")
+}
+fr_floaters_advance() {
+  local -a nf=()
+  local e
+  for e in "${FR_FLOATERS[@]}"; do
+    local age=${e%%|*} rest=${e#*|}
+    age=$((age + 1))
+    (( age <= 40 )) && nf+=("$age|$rest")
+  done
+  FR_FLOATERS=("${nf[@]}")
+}
+feed_floaters_advance() {
+  local -a nf=()
+  local e
+  for e in "${FEED_FLOATERS[@]}"; do
+    local age=${e%%|*} rest=${e#*|}
+    age=$((age + 1))
+    (( age <= 16 )) && nf+=("$age|$rest")   # 16 ticks: feed → pet
+  done
+  FEED_FLOATERS=("${nf[@]}")
+}
+
+# ── animation state machine (§8.4 priority order; §2.3 motion constants) ────
+anim_update() { # assoc_name self
+  local -n A=$1
+  local self=$2
+  # priority: hatching > hibernating > waking > sick > sleeping > eating > …
+  if (( TICK < HATCH_UNTIL )); then ANIM_STATE=hatch
+  elif [[ ${A[HIB]:-0} == 1 ]]; then ANIM_STATE=hib
+  elif (( TICK < WAKE_UNTIL )); then ANIM_STATE=wake
+  elif [[ $self == 1 && -n ${A[HEALTH]:-} ]] && (( ${A[HEALTH]} < 40 )); then ANIM_STATE=sick
+  elif (( TICK < EAT_UNTIL )); then ANIM_STATE=eat
+  elif [[ $self == 1 ]] && (( TICK < ${FETCH_UNTIL:-0} )); then ANIM_STATE=fetch
+  elif [[ ${A[SLEEPING]:-0} == 1 ]]; then ANIM_STATE=sleep
+  elif (( TICK < CELEB_UNTIL )); then ANIM_STATE=celebrate
+  else ANIM_STATE=idle; fi
+
+  ANIM_BLINK=0
+  WAKE_PHASE=0
+  FETCH_BX="" FETCH_BY=0   # the fetch ball exists only while its case runs
+  case $ANIM_STATE in
+    # gallery cadences: hibernate 1400ms ≈ 6 ticks, sick 1000ms ≈ 4,
+    # celebrate 400ms ≈ 2, sleep 1100ms ≈ 4, eat 500ms ≈ 2 (§2.3, gallery)
+    hatch)
+      local hp=$(( 24 - (HATCH_UNTIL - TICK) ))
+      HATCH_TILT=0; ANIM_FRAME=idle_1
+      if (( hp < 10 )); then
+        HATCH_PHASE=1                              # the egg wobbles…
+        (( (hp / 2) % 2 )) && HATCH_TILT=-1 || HATCH_TILT=1
+      elif (( hp < 16 )); then
+        HATCH_PHASE=2                              # …cracks, sparks fly…
+        HATCH_TILT=2
+        (( TICK % 2 )) && HATCH_TILT=$(( (TICK % 4) - 2 ))
+        (( TICK % 2 == 0 )) && spawn_floater "$G_SPARK" "$C_MAILC" -1
+      else
+        HATCH_PHASE=3                              # …hello, world
+        ANIM_FRAME=celebrate_$(( ((TICK / 2) % 2) + 1 ))
+        spawn_confetti
+      fi
+      ;;
+    hib) ANIM_FRAME=hibernate_$(( ((TICK / 6) % 2) + 1 )); WAKE_PHASE=0 ;;
+    wake)
+      # §5.3: cocoon cracks (sparks fly), then one stretch shakes off sleep
+      local wph=$(( 16 - (WAKE_UNTIL - TICK) ))
+      if (( wph < 6 )); then
+        WAKE_PHASE=1
+        ANIM_FRAME=hibernate_$(( (TICK % 2) + 1 ))   # fast shake = cracking
+        (( TICK % 2 == 0 )) && spawn_floater "$G_SPARK" "$C_MAILC" -1
+      elif (( wph < 10 )); then
+        WAKE_PHASE=2
+        ANIM_FRAME=idle_1; ANIM_BLINK=1              # eyes still closed
+      else
+        WAKE_PHASE=2
+        ANIM_FRAME=stretch                            # ascii stretch; pixel sways
+        (( (TICK / 2) % 2 )) && ANIM_FRAME=idle_2
+      fi
+      ;;
+    sick) ANIM_FRAME=sick_$(( ((TICK / 4) % 2) + 1 )); WAKE_PHASE=0 ;;
+    sleep)
+      ANIM_FRAME=sleep_$(( ((TICK / 4) % 2) + 1 )); ANIM_BLINK=1
+      # the classic: ice-blue z · zZ · zZz born at the crown of the head,
+      # floating up into the sky at half speed. Where a row would sink into
+      # the sprite the renderer slides it beside the head instead.
+      if (( TICK % 4 == 0 )); then
+        local -a _zz=("z" "zZ" "zZz")
+        local _zcol=$(( IW / 2 + PET_XOFF + (RANDOM % 7) - 2 ))
+        FLOATERS+=("2|${_zcol}|${_zz[(TICK / 4) % 3]}|$C_ICE")
+        FL_DIR+=(-2)
+      fi
+      ;;
+    fetch)
+      # PR merged → a game of fetch (§5.3): the ball arcs out right, the pet
+      # RUNS over (as far as the stage allows — PET_XMAX is exported by the
+      # draw layer), grabs it at the nose, trots back and drops it, then a
+      # victory lap. FETCH_BX: ball col relative to the stage center ("M" =
+      # carried at the mouth) · FETCH_BY: rows above the ground.
+      local ft=$(( 20 - (FETCH_UNTIL - TICK) ))
+      local xmax=${PET_XMAX:-6}
+      (( xmax < 0 )) && xmax=0
+      (( xmax > 16 )) && xmax=16
+      local land=$(( xmax + 12 ))          # right at the runner's nose
+      local lmax=$(( ${IW:-40} / 2 - 4 ))
+      (( land > lmax )) && land=$lmax
+      (( land < 10 )) && land=10
+      if (( ft <= 3 )); then                    # the throw — the merge event
+        ANIM_FRAME=idle_2; PET_XOFF=0           # hurls it from the feed card
+        FETCH_BX="T${ft}"; FETCH_LAND=$land
+      elif (( ft <= 8 )); then                  # the chase — a real sprint
+        ANIM_FRAME=idle_$(( (ft % 2) + 1 ))
+        PET_XOFF=$(( xmax * (ft - 3) / 5 ))
+        FETCH_BX=$land
+        FETCH_BY=$(( ft == 4 ? 1 : 0 ))         # one bounce on arrival
+      elif (( ft == 9 )); then                  # the grab, nose at the ball
+        ANIM_FRAME=eat_1; PET_XOFF=$xmax; FETCH_BX=$land
+        spawn_floater "squeak!" "$C_HEARTS"$'\e[3m' -1
+      elif (( ft <= 14 )); then                 # trot back, ball in mouth
+        ANIM_FRAME=idle_$(( (ft % 2) + 1 ))
+        PET_XOFF=$(( xmax * (15 - ft) / 6 ))
+        FETCH_BX=M
+      elif (( ft == 15 )); then                 # the drop
+        ANIM_FRAME=celebrate_1; PET_XOFF=0; FETCH_BX=8; FETCH_BY=1
+      else                                      # victory lap beside the ball
+        ANIM_FRAME=celebrate_$(( ((TICK / 2) % 2) + 1 ))
+        PET_XOFF=0; FETCH_BX=8; FETCH_BY=0
+      fi
+      ;;
+    eat)
+      local ph=$(( TICK - (EAT_UNTIL - 12) ))
+      if (( ph < 4 )); then EAT_PHASE=1; ANIM_FRAME=eat_1
+      elif (( ph < 9 )); then EAT_PHASE=2; ANIM_FRAME=eat_2
+      else EAT_PHASE=3; ANIM_FRAME=eat_3; fi
+      (( ph == 9 )) && spawn_floater "+$(( ${A[HUNGER]:-25} / 4 + 5 ))" "$C_GREEN" -1
+      ;;
+    celebrate)
+      ANIM_FRAME=celebrate_$(( ((TICK / 2) % 2) + 1 ))
+      spawn_confetti
+      ;;
+    idle)
+      # blink: 1 tick, randomly every 3–8 s (§2.3)
+      if (( TICK >= NEXT_BLINK )); then
+        BLINK_UNTIL=$((TICK + 1)); NEXT_BLINK=$(( TICK + 12 + RANDOM % 21 ))
+      fi
+      (( TICK < BLINK_UNTIL )) && ANIM_BLINK=1
+      # idle frame swap every 2–3 ticks ±1 jitter
+      if (( TICK >= NEXT_SWAP )); then
+        IDLE_ALT=$((1 - IDLE_ALT)); NEXT_SWAP=$(( TICK + 2 + RANDOM % 2 ))
+      fi
+      ANIM_FRAME=idle_$((IDLE_ALT + 1))
+      (( TICK < PERK_UNTIL )) && ANIM_FRAME=idle_2
+      # fit pet stretches during idles (§5.3)
+      if (( ${A[FITNESS]:-0} >= 80 )); then
+        (( TICK >= STRETCH_UNTIL && RANDOM % 120 == 0 )) && STRETCH_UNTIL=$((TICK + 4))
+        (( TICK < STRETCH_UNTIL )) && ANIM_FRAME=stretch
+      fi
+      # wander ±4 cols, 1 col/tick, ~20% chance per 5 s (§2.3);
+      # an unfit pet (fitness < 20) barely bothers, and sweats when it does.
+      # No strolling mid-dismount — the gurney exit plays on a still stage.
+      local wchance=90
+      (( ${A[FITNESS]:-50} < 20 )) && wchance=240
+      if [[ -n ${GURNEY_OFF_AT:-} ]]; then
+        :
+      elif (( PET_XOFF == WANDER_TGT )); then
+        (( RANDOM % wchance == 0 )) && WANDER_TGT=$(( RANDOM % 9 - 4 ))
+      else
+        (( PET_XOFF < WANDER_TGT )) && PET_XOFF=$((PET_XOFF + 1)) || PET_XOFF=$((PET_XOFF - 1))
+        (( ${A[FITNESS]:-50} < 20 && TICK % 2 == 0 )) && spawn_floater "°" "$C_ICE" -1
+      fi
+      # even at rest, the couch potato glistens now and then
+      if (( ${A[FITNESS]:-50} < 20 && TICK % 24 == 6 )); then
+        spawn_floater "°" "$C_ICE" -1
+      fi
+      # hearts float up when happiness > 90 — or when company's over;
+      # a perfect 100 also earns the three-heart halo (dense z-layer)
+      if (( ${A[HAPPINESS]:-0} > 90 && TICK % 8 == 0 )); then
+        spawn_floater "$G_HEART_FLOAT" "$C_HEARTS" -1
+      elif [[ ${2:-0} == 1 && -n ${A[VISITORS]:-} ]] && (( TICK % 16 == 0 )); then
+        spawn_floater "$G_HEART_FLOAT" "$C_HEARTS" -1
+      fi
+      # drowsy pre-hibernation hint (§5.3)
+      if [[ ${A[DROWSY]:-0} == 1 ]] && (( TICK % 48 == 0 )); then
+        spawn_floater "${G_ZZZ}?" "$C_ICE" -1
+      fi
+      ;;
+  esac
+  [[ $ANIM_STATE != idle ]] && { WANDER_TGT=0; }
+  floaters_advance
+  feed_floaters_advance
+  fr_floaters_advance
+}
+
+spawn_floater() { # char color dir(-1 up) [row] — spawns beside the pet so
+  local w=${PET_W:-24}                # it stays visible over full-height pets;
+  local off=$(( w / 2 + 1 + RANDOM % 3 ))   # row overrides the start height
+  (( RANDOM % 2 )) && off=$(( -off - ${#1} ))
+  local col=$(( IW / 2 + PET_XOFF + off ))
+  local row=${4:-$(( SH - 2 ))}; (( row < 1 )) && row=1
+  FLOATERS+=("$row|$col|$1|$2"); FL_DIR+=("$3")
+}
+spawn_confetti() {
+  local n=$(( RANDOM % 2 + 1 )) i
+  for ((i=0; i<n; i++)); do
+    local ch
+    case $((RANDOM % 3)) in 0) ch="$G_SPARK";; 1) ch="·";; 2) ch="*";; esac
+    [[ $TIER == A && $ch == "·" ]] && ch="."
+    FLOATERS+=("0|$((RANDOM % (IW > 4 ? IW - 4 : 1) + 2))|$ch|$C_MAILC"); FL_DIR+=(1)
+  done
+}
+floaters_advance() {
+  local -a nf=() nd=()
+  local i
+  for i in "${!FLOATERS[@]}"; do
+    local e=${FLOATERS[i]} d=${FL_DIR[i]}
+    local row=${e%%|*} rest=${e#*|}
+    local step=$d
+    if (( d == -2 )); then     # sleepy z's rise at half speed
+      step=$(( TICK % 2 ? 0 : -1 ))
+    fi
+    row=$((row + step))
+    if (( row >= 0 && row < SH )); then nf+=("$row|$rest"); nd+=("$d"); fi
+  done
+  FLOATERS=("${nf[@]}"); FL_DIR=("${nd[@]}")
+}
+
+dense_open_sel() { # assoc_name — open the Tab-inspected stat's page
+  (( DSEL < 0 )) && return 1
+  local -a dn=(happiness hunger energy mood fitness cleanliness curiosity social wisdom health)
+  local nm=${dn[DSEL]} i
+  for i in "${!STAT_NAMES[@]}"; do
+    if [[ ${STAT_NAMES[i]} == "$nm" ]]; then
+      stat_detail_info "$1" "$i"
+      open_url "$D_URL"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ── snapshot mode (open question 5: perfect test harness output) ────────────
+strip_ansi() {
+  sed -E $'s/\x1b\\][^\x07\x1b]*(\x07|\x1b\\\\)//g; s/\x1b\\[[0-9;]*[A-Za-z]//g'
+}
+do_snapshot() { # draw_fn args…
+  term_size 2>/dev/null || { COLS=80; LINES=24; }
+  COLS=${COLS:-80}; LINES=${LINES:-24}
+  # test/preview knob: render at an exact size, skipping the clamps below
+  if [[ ${GITAGOTCHI_SNAP_COLS:-} =~ ^[0-9]+$ && ${GITAGOTCHI_SNAP_LINES:-} =~ ^[0-9]+$ ]]; then
+    COLS=$GITAGOTCHI_SNAP_COLS LINES=$GITAGOTCHI_SNAP_LINES
+    "$@"
+    local l
+    if [[ ${GITAGOTCHI_SNAPSHOT_COLOR:-} == 1 ]]; then
+      for l in "${SCREEN[@]}"; do printf '%s\n' "$l"; done
+    else
+      for l in "${SCREEN[@]}"; do printf '%s\n' "$l"; done | strip_ansi
+    fi
+    return
+  fi
+  if [[ ${DENSE_FORCE:-} == 1 ]]; then
+    (( COLS < 110 || COLS > 132 )) && COLS=132
+    LINES=38
+  elif dense_active; then
+    (( COLS < 60 )) && COLS=80
+    (( COLS > 132 )) && COLS=132
+    (( LINES < 20 )) && LINES=24
+    if [[ $1 == draw_compare_dense ]]; then
+      # the shareable frame renders at its full size regardless of terminal
+      (( COLS < 110 )) && COLS=110
+      LINES=40
+    fi
+  else
+    (( COLS > 100 )) && COLS=80
+  fi
+  "$@"
+  local l
+  if [[ ${GITAGOTCHI_SNAPSHOT_COLOR:-} == 1 ]]; then   # debug: keep the ANSI
+    for l in "${SCREEN[@]}"; do printf '%s\n' "$l"; done
+  else
+    for l in "${SCREEN[@]}"; do printf '%s\n' "$l"; done | strip_ansi
+  fi
+}
+
+# ── badge mode (plan.md §11): the pet as SVG, straight to stdout ────────────
+if [[ $CMD == badge ]]; then
+  fetch_all "$TARGET" "$SELF" >/dev/null 2>&1
+  derive_state "$TARGET" || true
+  load_state S "$TARGET" || die "could not derive pet for $TARGET"
+  badge_render S
+  exit 0
+fi
+
+# ── bootstrap data ──────────────────────────────────────────────────────────
+first_run=0
+[[ ! -f $CACHE_ROOT/$TARGET/state.env ]] && first_run=1
+
+if (( OPT_SNAPSHOT )) || [[ $CMD == compare && $OPT_SNAPSHOT == 1 ]]; then
+  fetch_all "$TARGET" "$SELF" >/dev/null 2>&1
+  derive_state "$TARGET" || true
+  load_state S "$TARGET" || die "could not derive pet for $TARGET"
+  VOICE_CUR=""; voice_pool S "$SELF"; VOICE_CUR=${VPOOL[0]:-}; VOICE_URL=${VPOOL_URL[0]:-}
+  # test/preview knob: freeze the fetch game at beat t (0-19) in the frame
+  [[ ${GITAGOTCHI_FETCH_T:-} =~ ^[0-9]+$ ]] && FETCH_UNTIL=$(( 20 - GITAGOTCHI_FETCH_T ))
+  anim_update S "$SELF"
+  if [[ $CMD == compare ]]; then
+    fetch_all "$CMP_LOGIN" 0 >/dev/null 2>&1
+    derive_state "$CMP_LOGIN" || true
+    load_state F "$CMP_LOGIN" || die "could not derive pet for @$CMP_LOGIN"
+    if dense_active; then do_snapshot draw_compare_dense S F
+    else do_snapshot draw_compare S F; fi
+  elif dense_active; then
+    derive_history "$TARGET"
+    load_state S "$TARGET"
+    dfeed_load "${S[FEED_RAW]:-}"
+    friends_init
+    case $PANEL in
+      vitals)   do_snapshot draw_vitals_x S "$SELF" ;;
+      activity) do_snapshot draw_activity_x S "$SELF" ;;
+      friends)  do_snapshot draw_friends_x ;;
+      feed)     do_snapshot draw_feed_x S "$SELF" ;;
+      "")       do_snapshot draw_dense S "$SELF" ;;
+      *)        die "unknown panel: $PANEL (vitals|activity|friends|feed)" ;;
+    esac
+  else
+    do_snapshot draw_main S "$SELF"
+  fi
+  exit 0
+fi
+
+term_size
+enter_alt
+
+if (( first_run )); then
+  onboarding    # the reveal replays on any new machine — proves nothing is stored
+else
+  load_state S "$TARGET" || true
+  spawn_refresh
+  # make sure we have something to draw
+  if [[ -z ${S[ID]:-} ]]; then
+    printf '\e[2J\e[H'; center "gitagotchi · first sight…"
+    fetch_all "$TARGET" "$SELF"; derive_state "$TARGET" || true
+    load_state S "$TARGET" || die "could not derive pet for $TARGET"
+  fi
+fi
+PREV_MERGE=${S[MERGE_NUM]:-}
+PREV_MEDALS=$(awk -F';' '{print NF}' <<<"${S[MEDALS_RAW]:-}"); [[ -z ${S[MEDALS_RAW]:-} ]] && PREV_MEDALS=0
+PREV_FOLLOWERS=${S[FOLLOWERS]:-0}; PREV_MAIL=${S[MAIL]:-0}; PREV_REVREQ=${S[REVIEW_REQ]:-0}
+PREV_HIB=${S[HIB]:-0}
+PREV_STAGE=${S[STAGE]:-}
+dfeed_load "${S[FEED_RAW]:-}"
+friends_init
+if [[ -n $FIXDIR ]] && dense_active; then derive_history "$TARGET"; load_state S "$TARGET"; fi
+
+if [[ $CMD == compare ]]; then
+  printf '\e[2J\e[H'; center "fetching @$CMP_LOGIN…"
+  fetch_all "$CMP_LOGIN" 0; derive_state "$CMP_LOGIN" || true
+  load_state F "$CMP_LOGIN" || die "could not derive pet for @$CMP_LOGIN"
+  MODE=compare CMP_FROM=quit
+fi
+
+voice_pool S "$SELF"
+VI=$(( RANDOM % ${#VPOOL[@]} )); VOICE_CUR=${VPOOL[VI]}; VOICE_URL=${VPOOL_URL[VI]:-}; VOICE_AT=$TICK
+vignette_pick S
+
+# --demo: stage an animation on a loop; live refreshes pause so the staged
+# state isn't clobbered mid-show (session theater — nothing derived changes)
+demo_tick() {
+  [[ -z $DEMO ]] && return
+  case $DEMO in
+    wake)
+      local dph=$(( TICK % 64 ))
+      if (( dph < 20 )); then
+        S[HIB]=1; S[DAYS_QUIET]=95; S[SLEEPING]=0; S[DROWSY]=0
+        (( dph == 0 )) && WAKE_UNTIL=-1 FLASH_UNTIL=-1
+      elif (( dph == 20 )); then
+        S[HIB]=0; S[DAYS_QUIET]=0; S[HOURS_QUIET]=3; S[SLEEPING]=0
+        WAKE_UNTIL=$((TICK + 16))
+        FLASH_TEXT="${S[NAME]} wakes up ${G_SPARK}"; FLASH_URL=""
+        FLASH_UNTIL=$((TICK + 16))
+      fi ;;
+    eat)
+      if (( TICK % 32 == 8 )); then
+        EAT_UNTIL=$((TICK + 12))
+        FLASH_TEXT="PR #${S[MERGE_NUM]:-482} merged"; FLASH_URL=${S[MERGE_URL]:-}
+        FLASH_UNTIL=$((TICK + 8))
+        spawn_feed_glee merge
+      fi ;;
+    celebrate)
+      (( TICK % 24 == 8 )) && { CELEB_UNTIL=$((TICK + 8)); spawn_feed_glee shine; } ;;
+    hatch)
+      if (( TICK % 56 == 8 )); then
+        HATCH_UNTIL=$((TICK + 24))
+        spawn_friend_glee hatch
+        FLASH_TEXT="${S[NAME]:-Pet} hatched ${G_SPARK} welcome!"; FLASH_URL=""
+        FLASH_UNTIL=$((TICK + 24))
+      fi ;;
+    tired)
+      S[ENERGY]=15 ;;   # bags under the eyes; below the glasses on an elder
+    wired)
+      S[ENERGY]=95 ;;   # pupils dilate — big, black, too awake to blink
+    curious)
+      # scrunched brows + the book stack; the vignette is staged directly so
+      # a real low stat (flies/window/belly) can't shove the books offstage
+      # visitors (real or a stale PRETEND_VISITORS export) would keep the
+      # corner clear for the crowd — the staged show gets the stage alone
+      S[CURIOSITY]=90; S[VISITORS]=; VIG_CUR=books ;;
+    social)
+      S[SOCIAL]=90 ;;   # the tail wags — appendages swish on the half-second
+    reviewer)
+      S[OUTBOUND7]=5 ;;   # review duty — the pet stands guard with the spear
+    skinny)
+      S[HUNGER]=10 ;;   # starving pets narrow — hunger wears the silhouette
+    chubby)
+      S[HUNGER]=95 ;;   # stuffed pets round out
+    love)
+      S[HAPPINESS]=100 ;;   # rising hearts + the three-heart halo
+    fit)
+      S[FITNESS]=100 ;;     # the six-pack + idle stretches
+    unfit)
+      # sweat beads + can barely be bothered to wander (awake, or no idles)
+      S[FITNESS]=10 S[HIB]=0 S[DROWSY]=0 S[SLEEPING]=0 S[DAYS_QUIET]=0 ;;
+    fetch)
+      # the ball game on a loop, no meal first
+      if (( TICK % 44 == 8 )); then
+        FETCH_UNTIL=$((TICK + 20))
+        FLASH_TEXT="PR #482 merged ${G_SPARK} fetch!"; FLASH_URL=""
+        FLASH_UNTIL=$((TICK + 10))
+      fi
+      S[HIB]=0 S[DROWSY]=0 S[SLEEPING]=0 S[DAYS_QUIET]=0 ;;
+    stretcher)
+      # critical health: the gurney wheels in and the pet hops on, rides
+      # until "recovery" (20 healthy ticks — room for the full leap-off +
+      # roll-away exit), then the cycle re-arms
+      S[HEALTH]=$(( (TICK % 72) < 20 ? 80 : 5 ))
+      S[HIB]=0 S[DROWSY]=0 S[SLEEPING]=0 S[DAYS_QUIET]=0 ;;
+    sleep)
+      S[SLEEPING]=1 S[HIB]=0 S[DROWSY]=0 ;;   # zZz floaters, dimmed screen
+    messy)
+      # awake pet, CLEAN sweeping 95→10 — watch the mess pile up in steps
+      S[HIB]=0 S[DROWSY]=0 S[SLEEPING]=0 S[DAYS_QUIET]=0
+      S[CLEAN]=$(( 95 - ((TICK / 16) % 6) * 17 )) ;;
+    wise)
+      # WISDOM sweeping 30→96 — watch the beard grow: none, stubble, trim, sage
+      S[HIB]=0 S[DROWSY]=0 S[SLEEPING]=0 S[DAYS_QUIET]=0
+      S[WISDOM]=$(( 30 + ((TICK / 16) % 4) * 22 )) ;;
+    night)
+      # moon + stars + the moonlit palette (plan.md §11); combine with a
+      # season via GITAGOTCHI_PRETEND_MONTH
+      GITAGOTCHI_PRETEND_HOUR=23 ;;
+    winter)  GITAGOTCHI_PRETEND_MONTH=1  ;;   # snowfall + frosted ground
+    spring)  GITAGOTCHI_PRETEND_MONTH=4  ;;   # flowers + fresh grass
+    autumn)  GITAGOTCHI_PRETEND_MONTH=10 ;;   # falling leaves + leaf litter
+  esac
+}
+if [[ -n $DEMO ]]; then
+  NEXT_REFRESH=$(( $(date +%s) + 999999 ))
+  [[ $DEMO == wake ]] && PREV_HIB=1
+fi
+
+# ── the 4 fps loop: chunky is the charm (§8.2, P5) ──────────────────────────
+while :; do
+  TICK=$((TICK + 1))
+  demo_tick
+  if (( RESIZED )); then RESIZED=0; term_size; fi
+
+  if (( COLS < 60 || LINES < 20 )); then
+    draw_toosmall "${S[NAME]:-your pet}"
+    paint
+    read_key 0.25; k=$KEY
+    [[ $k == q ]] && break
+    continue
+  fi
+
+  reap_fetch
+  if [[ -z $FIXDIR && -z $FETCH_PID ]]; then
+    now=$(date +%s)
+    if (( now >= NEXT_REFRESH )); then spawn_refresh
+    elif [[ $MODE == friends || $MODE == friend ]] || { [[ $MODE == main ]] && dense_active; }; then
+      # fill friend rows in the background; the list never blocks (P4).
+      # Visitors (last-hour interactions) ride the same queue so their
+      # pets can drop by fully dressed.
+      for fl in "${FR_SORTED[@]}" ${S[VISITORS]:-}; do
+        (( now - ${FR_FETCHED[$fl]:-0} < TTL_FRIEND )) && continue
+        spawn_friend_fetch "$fl"; break
+      done
+    fi
+  fi
+
+  # voice rotates every ~45 s among currently true lines (§5.2)
+  if (( TICK - VOICE_AT >= 180 )); then
+    voice_pool S "$SELF"
+    VI=$(( RANDOM % ${#VPOOL[@]} ))
+    VOICE_CUR=${VPOOL[VI]}; VOICE_URL=${VPOOL_URL[VI]:-}
+    VOICE_AT=$TICK
+  fi
+  (( TICK % 20 == 0 )) && vignette_pick S
+
+  # draw current screen
+  case $MODE in
+    main)
+      if dense_active; then
+        # animation runs in the pet panel's coordinates (ux-spec §9.1)
+        IW=$(( COLS * 54 / 100 - 4 )); SH=9
+        anim_update S 1
+        draw_dense S 1
+      else
+        anim_update S 1; draw_main S 1
+      fi ;;
+    stats)   draw_stats S 1 ;;
+    fstats)  draw_stats F 0 ;;
+    vitals)   draw_vitals_x "$XSRC" "$XSELF" ;;
+    activity) draw_activity_x "$XSRC" "$XSELF" ;;
+    feedx)    draw_feed_x "$XSRC" "$XSELF" ;;
+    friends)
+      if dense_active; then draw_friends_x
+      else draw_friends; fi ;;
+    friend)
+      if dense_active; then
+        IW=$(( COLS * 54 / 100 - 4 )); SH=9
+        anim_update F 0
+        draw_dense F 0
+      else
+        anim_update F 0; draw_main F 0
+      fi ;;
+    compare)
+      anim_update S 1
+      if dense_active; then draw_compare_dense S F
+      else draw_compare S F; fi ;;
+  esac
+  (( HELP )) && overlay_help
+  paint
+
+  read_key 0.25; k=$KEY
+  [[ -z $k ]] && continue
+
+  if (( HELP )); then
+    case $k in "?"|esc|q) HELP=0 ;; esac
+    continue
+  fi
+  case $k in
+    "?") HELP=1; continue ;;
+    r)
+      now=$(date +%s)
+      if (( now - LAST_FORCE >= 10 )); then
+        LAST_FORCE=$now; NEXT_REFRESH=0
+        cache_expire "$TARGET" following   # new follows show up on demand
+        FR_FETCHED=()                      # …and the whole crowd re-derives
+        if [[ $MODE == friend && -n $FVIEW ]]; then unset "FR_FETCHED[$FVIEW]"; fi
+      fi
+      continue ;;
+  esac
+
+  # Tab inspector: one cursor over the vitals rows, the friends table and
+  # the feed entries (Shift+Tab reverses)
+  if dense_active && [[ $MODE == main || $MODE == friend ]]; then
+    case $k in
+      $'\t'|backtab)
+        mt_nf=0; [[ $MODE == main ]] && mt_nf=${#FR_SORTED[@]}
+        mt_tot=$(( 10 + mt_nf + ${DFEED_VIS:-0} ))
+        if [[ $k == $'\t' ]]; then
+          MSEL=$(( MSEL + 1 )); (( MSEL >= mt_tot )) && MSEL=-1
+        else
+          if (( MSEL <= -1 )); then MSEL=$(( mt_tot - 1 )); else MSEL=$(( MSEL - 1 )); fi
+        fi
+        DSEL=-1 MFEED_SEL=-1
+        if (( MSEL >= 0 && MSEL < 10 )); then DSEL=$MSEL
+        elif (( MSEL >= 10 && MSEL < 10 + mt_nf )); then SEL_FRIEND=$(( MSEL - 10 ))
+        elif (( MSEL >= 10 + mt_nf )); then MFEED_SEL=$(( MSEL - 10 - mt_nf )); fi
+        continue ;;
+    esac
+  fi
+
+  case $MODE in
+    main)
+      case $k in
+        d)
+          if dense_active; then DENSE_FORCE=0
+          else
+            DENSE_FORCE=1
+            [[ -z ${S[HIST_HAPPINESS]:-} && -z $FIXDIR ]] && NEXT_REFRESH=0
+          fi
+          friends_init ;;
+        j|down)
+          if dense_active && (( ${#FR_SORTED[@]} )); then
+            SEL_FRIEND=$(( (SEL_FRIEND + 1) % ${#FR_SORTED[@]} )); fi ;;
+        k|up)
+          if dense_active && (( ${#FR_SORTED[@]} )); then
+            SEL_FRIEND=$(( (SEL_FRIEND + ${#FR_SORTED[@]} - 1) % ${#FR_SORTED[@]} )); fi ;;
+        enter)
+          if dense_active && (( DSEL >= 0 )); then
+            dense_open_sel S
+          elif dense_active && (( MFEED_SEL >= 0 )); then
+            open_url "$MFEED_URL"
+          elif dense_active && (( ${#FR_SORTED[@]} )); then
+            fl=${FR_SORTED[SEL_FRIEND]}
+            if [[ -n ${FRROW[$fl]:-} ]] && load_state F "$fl"; then
+              FVIEW=$fl; MODE=friend
+              voice_pool F 0; VOICE_CUR=${VPOOL[0]:-}; VOICE_URL=${VPOOL_URL[0]:-}
+            fi
+          fi ;;
+        esc) DSEL=-1 MSEL=-1 MFEED_SEL=-1 ;;
+        c)
+          if dense_active && (( ${#FR_SORTED[@]} )); then
+            fl=${FR_SORTED[SEL_FRIEND]}
+            if [[ -n ${FRROW[$fl]:-} ]] && load_state F "$fl"; then
+              CMP_FROM=main; MODE=compare
+            fi
+          fi ;;
+        f) friends_init; MODE=friends; SEL_FRIEND=0; PV_LOGIN=""; MSEL=-1 DSEL=-1 MFEED_SEL=-1 ;;
+        s)
+          if dense_active; then MODE=vitals XSRC=S XSELF=1 XFROM=main SEL_STAT=0 CSEL=-1 VSEL=0
+          else MODE=stats; SEL_STAT=0; fi ;;
+        g) dense_active && MODE=activity XSRC=S XSELF=1 XFROM=main ;;
+        e) dense_active && MODE=feedx XSRC=S XSELF=1 XFROM=main SEL_FEED=0 ;;
+        q)
+          # one frame of goodbye, then the terminal is exactly as it was (§5.9)
+          printf '\e[2J\e[H'
+          for ((i=0; i<LINES/2-1; i++)); do echo; done
+          center "(o.o)/  bye!"
+          read_key 0.4
+          break ;;
+      esac ;;
+    stats)
+      case $k in
+        j|down) SEL_STAT=$(( (SEL_STAT + 1) % 10 )) ;;
+        k|up)   SEL_STAT=$(( (SEL_STAT + 9) % 10 )) ;;
+        enter)  stat_detail_info S "$SEL_STAT"; open_url "$D_URL" ;;
+        esc|q|s) MODE=main ;;
+      esac ;;
+    fstats)
+      case $k in
+        j|down) SEL_STAT=$(( (SEL_STAT + 1) % 10 )) ;;
+        k|up)   SEL_STAT=$(( (SEL_STAT + 9) % 10 )) ;;
+        enter)  stat_detail_info F "$SEL_STAT"; open_url "$D_URL" ;;
+        esc|q|s) MODE=friend ;;
+      esac ;;
+    friends)
+      local_n=${#FR_SORTED[@]}
+      case $k in
+        j|down) (( local_n )) && SEL_FRIEND=$(( (SEL_FRIEND + 1) % local_n )) ;;
+        k|up)   (( local_n )) && SEL_FRIEND=$(( (SEL_FRIEND + local_n - 1) % local_n )) ;;
+        enter)
+          if (( local_n )); then
+            fl=${FR_SORTED[SEL_FRIEND]}
+            if [[ -n ${FRROW[$fl]:-} ]] && load_state F "$fl"; then
+              FVIEW=$fl; MODE=friend
+              voice_pool F 0; VOICE_CUR=${VPOOL[0]:-}; VOICE_URL=${VPOOL_URL[0]:-}
+            fi
+          fi ;;
+        c)
+          if (( local_n )); then
+            fl=${FR_SORTED[SEL_FRIEND]}
+            if [[ -n ${FRROW[$fl]:-} ]] && load_state F "$fl"; then
+              CMP_FROM=friends; MODE=compare
+            fi
+          fi ;;
+        esc|q) MODE=main; voice_pool S "$SELF"; VOICE_CUR=${VPOOL[0]:-}; VOICE_URL=${VPOOL_URL[0]:-} ;;
+      esac ;;
+    vitals)
+      # one cursor: rows 0-9 run down the list, 10-18 continue through the
+      # composition rows; jk/arrows/tab all move it, ←→ jump between panels
+      vn=10; (( VX_TWO )) && vn=19
+      case $k in
+        j|down|$'\t') VSEL=$(( (VSEL + 1) % vn )); vx_sel_sync ;;
+        k|up|backtab)  VSEL=$(( (VSEL + vn - 1) % vn )); vx_sel_sync ;;
+        right) (( VX_TWO )) && (( VSEL < 10 )) && { vx_jump_right; vx_sel_sync; } ;;
+        left)  (( VSEL >= 10 )) && { vx_jump_left; vx_sel_sync; } ;;
+        enter)
+          if (( CSEL >= 0 )); then
+            vx_stat_url "$XSRC" "${VX_COMP_NAMES[CSEL]}"; open_url "$VXURL"
+          else
+            stat_detail_info "$XSRC" "$SEL_STAT"; open_url "$D_URL"
+          fi ;;
+        esc|q|s) MODE=$XFROM ;;
+      esac ;;
+    activity)
+      case $k in
+        $'\t')   act_cycle_range "$XSRC" 1 ;;
+        backtab) act_cycle_range "$XSRC" -1 ;;
+        esc|q|g) MODE=$XFROM ;;
+      esac ;;
+    feedx)
+      case $k in
+        [1-7]) FEED_FILTER=$((k - 1)); SEL_FEED=0 ;;
+        j|down) (( FEEDX_N )) && SEL_FEED=$(( (SEL_FEED + 1) % FEEDX_N )) ;;
+        k|up)   (( FEEDX_N )) && SEL_FEED=$(( (SEL_FEED + FEEDX_N - 1) % FEEDX_N )) ;;
+        enter)  open_url "$FEEDX_SEL_URL" ;;
+        esc|q|e) MODE=$XFROM ;;
+      esac ;;
+    friend)
+      case $k in
+        s)
+          if dense_active; then MODE=vitals XSRC=F XSELF=0 XFROM=friend SEL_STAT=0 CSEL=-1 VSEL=0
+          else MODE=fstats; SEL_STAT=0; fi ;;
+        g) dense_active && MODE=activity XSRC=F XSELF=0 XFROM=friend ;;
+        e) dense_active && MODE=feedx XSRC=F XSELF=0 XFROM=friend SEL_FEED=0 ;;
+        c) CMP_FROM=friend; MODE=compare ;;
+        enter)
+          if dense_active && (( DSEL >= 0 )); then dense_open_sel F
+          elif dense_active && (( MFEED_SEL >= 0 )); then open_url "$MFEED_URL"; fi ;;
+        esc|q)
+          if (( DSEL >= 0 || MFEED_SEL >= 0 )); then DSEL=-1 MSEL=-1 MFEED_SEL=-1
+          else
+            MODE=friends; voice_pool S "$SELF"; VOICE_CUR=${VPOOL[0]:-}; VOICE_URL=${VPOOL_URL[0]:-}
+          fi ;;
+      esac ;;
+    compare)
+      case $k in
+        $'\t')
+          # ↹ cycles the rivalry through the friends list, skipping unfetched rows
+          local_n=${#FR_SORTED[@]}
+          local_try=0
+          while (( local_n && local_try < local_n )); do
+            SEL_FRIEND=$(( (SEL_FRIEND + 1) % local_n ))
+            fl=${FR_SORTED[SEL_FRIEND]}
+            if [[ $fl != "${F[LOGIN]:-}" && -n ${FRROW[$fl]:-} ]] && load_state F "$fl"; then break; fi
+            local_try=$((local_try + 1))
+          done ;;
+        enter)
+          FVIEW=${F[LOGIN]}; MODE=friend
+          [[ $CMP_FROM == quit ]] && CMP_FROM=main
+          voice_pool F 0; VOICE_CUR=${VPOOL[0]:-}; VOICE_URL=${VPOOL_URL[0]:-} ;;
+        s)
+          # snapshot to stdout: drop out of the alt screen for a beat and print
+          # this exact frame as plain text — it waits in scrollback after quit
+          tput rmcup 2>/dev/null
+          for l in "${SCREEN[@]}"; do printf '%s\n' "$l"; done | strip_ansi
+          tput smcup 2>/dev/null; tput civis 2>/dev/null ;;
+        esc|q)
+          if [[ $CMP_FROM == quit ]]; then break; fi
+          MODE=$CMP_FROM ;;
+      esac ;;
+  esac
+done
+
+exit 0

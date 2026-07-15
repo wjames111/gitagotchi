@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitagotchi — expanded panel designs</title>
+<style>
+  :root{
+    --bg:#010409; --term:#0d1117; --ink:#e6edf3; --muted:#8b949e; --faint:#484f58;
+    --track:#21262d; --border:#30363d;
+    --green:#3fb950; --yellow:#d29922; --orange:#f0883e; --red:#f85149; --blue:#58a6ff;
+    --cyan:#39c5cf; --purple:#bc8cf2; --ice:#79c0f2; --pet:#dea584;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg); color:var(--ink); margin:0; padding:28px 18px 60px;
+    font-family:ui-monospace,'SFMono-Regular','JetBrains Mono','Fira Code',Menlo,Consolas,monospace;
+    font-size:13px; line-height:1.4}
+  .page{max-width:1080px; margin:0 auto}
+  h1{font-size:16px; margin:0 0 4px}
+  p.note{color:var(--muted); margin:0 0 26px; max-width:76ch}
+  h2.sec{font-size:14px; margin:42px 0 8px}
+  h2.sec kbd{background:#161b22;border:1px solid var(--border);border-bottom-width:2px;
+    border-radius:4px;padding:0 6px;font:inherit;font-size:11px}
+  .cap{color:var(--muted); font-size:12px; margin:10px 2px 6px; max-width:92ch}
+  .cap b{color:var(--ink)}
+
+  .term{background:var(--term); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 40px rgba(0,0,0,.55); overflow:hidden; position:relative}
+  .term::after{content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 3px)}
+  .tbar{display:flex; align-items:center; gap:7px; padding:8px 12px; background:#161b22;
+    border-bottom:1px solid var(--border); color:var(--muted); font-size:11px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .tbar .tt{margin-left:8px}
+  .screen{padding:16px 16px 10px}
+
+  .panel{border:1px solid var(--pc,var(--border)); border-radius:6px; position:relative;
+    padding:16px 14px 12px; background:var(--term); min-width:0}
+  .ptitle{position:absolute; top:-9px; left:10px; background:var(--term); padding:0 7px;
+    color:var(--pc,var(--muted)); font-weight:700; font-size:12px; text-shadow:0 0 10px currentColor}
+  .pkey{position:absolute; top:-9px; right:10px; background:var(--term); padding:0 6px;
+    color:var(--faint); font-size:11px}
+
+  .ftr{display:flex; align-items:center; gap:8px; padding:12px 4px 4px; flex-wrap:wrap}
+  .kbtn{border:1px solid var(--border); border-radius:4px; padding:1px 8px; color:var(--muted)}
+  .kbtn b{color:var(--red); font-weight:700}
+  .ftr .sp{flex:1}
+  .sync{color:var(--green)} .sync .ago{color:var(--muted)}
+
+  .meter{display:inline-flex; gap:2px; align-items:center; height:12px; vertical-align:middle}
+  .meter i{width:9px; height:100%; background:var(--track); border-radius:2px}
+  .meter.big{height:16px} .meter.big i{width:12px}
+  .meter.mini{height:9px} .meter.mini i{width:6px}
+  .v-hi{color:var(--green)} .v-mid{color:var(--yellow)} .v-lo{color:var(--red)}
+  .spark{color:rgba(88,166,255,.75); letter-spacing:1px; font-size:12px}
+  .pix{position:relative; display:inline-block; image-rendering:pixelated}
+
+  /* ── vitals expanded ── */
+  .vgrid{display:grid; grid-template-columns:1.25fr 1fr; gap:14px}
+  .vlist .row{display:grid; grid-template-columns:96px 1fr 34px 20px; gap:10px;
+    align-items:center; padding:5px 8px; border-radius:5px; color:var(--muted)}
+  .vlist .row .val{text-align:right; font-weight:700}
+  .vlist .row .trend{font-size:11px}
+  .vlist .row.sel{background:rgba(63,185,80,.07); outline:1px solid rgba(63,185,80,.4)}
+  .vlist .row.sel .lb{color:var(--ink); font-weight:700}
+  .vlist .row.sel .lb::before{content:"▸ "; color:var(--green)}
+  .vlist .cap-flag{color:var(--yellow); font-size:11px}
+  .vlist .lock{color:var(--faint); font-size:10px}
+  .vsep{border-top:1px dashed #262c33; margin:7px 0}
+  .detail{border:1px solid rgba(63,185,80,.35); border-radius:6px; padding:14px;
+    margin-top:12px; background:rgba(63,185,80,.03)}
+  .detail h3{margin:0 0 8px; font-size:13px}
+  .detail h3 .big{font-size:20px; color:var(--green)}
+  .detail h3 .delta{color:var(--green); font-size:11px}
+  .hist{margin:10px 0 4px; line-height:1.02; font-size:11px; letter-spacing:0}
+  .why{color:#b3bac2; margin:10px 0 6px}
+  .why b{color:var(--ink)}
+  .src{color:var(--faint); font-size:11px}
+  .src .q{color:var(--cyan)}
+  .openlink{display:inline-block; margin-top:8px; border:1px solid rgba(88,166,255,.4);
+    color:var(--blue); border-radius:4px; padding:1px 8px; font-size:11px; cursor:pointer}
+  .comp .crow{display:grid; grid-template-columns:88px 1fr 44px; gap:10px;
+    align-items:center; padding:3.5px 0; color:var(--muted); font-size:12px}
+  .comp .bar{height:9px; background:var(--track); border-radius:2px; position:relative}
+  .comp .bar i{position:absolute; inset:0 auto 0 0; background:var(--green);
+    border-radius:2px; opacity:.85}
+  .comp .pts{text-align:right; color:var(--ink); font-weight:600}
+  .capnote{border:1px solid rgba(210,153,34,.4); border-radius:5px; color:var(--yellow);
+    font-size:11.5px; padding:8px 10px; margin-top:12px; background:rgba(210,153,34,.05)}
+
+  /* ── activity expanded ── */
+  .tabs{display:flex; gap:6px; margin-bottom:12px}
+  .tab{border:1px solid var(--border); border-radius:4px; padding:1px 10px; color:var(--muted); font-size:12px}
+  .tab.on{color:var(--ink); border-color:#39d353; box-shadow:0 0 8px rgba(57,211,83,.2)}
+  .actwrap{position:relative}
+  pre.graph{margin:0; line-height:1.02; font-size:13px; display:inline-block; max-width:100%; overflow:hidden}
+  pre.hist{letter-spacing:2px}
+  .baseline{position:absolute; border-top:1px dashed rgba(240,136,62,.55)}
+  .baseline .bl{position:absolute; right:-4px; top:-16px; color:var(--orange); font-size:10.5px;
+    background:var(--term); padding:0 5px; border-radius:3px}
+  .marks{position:relative; height:14px; color:var(--faint); font-size:10.5px}
+  .marks span{position:absolute}
+  .axis{display:flex; justify-content:space-between; color:var(--faint); font-size:10.5px; margin-top:2px}
+  .actmeta{display:flex; gap:20px; color:var(--muted); font-size:11.5px; margin-top:10px; flex-wrap:wrap}
+  .actmeta b{color:var(--ink)}
+  .subgrid{display:grid; grid-template-columns:1fr 1.4fr; gap:14px; margin-top:16px}
+  .sub{border:1px solid #262c33; border-radius:6px; padding:12px}
+  .sub h4{margin:0 0 10px; font-size:11.5px; color:var(--muted); font-weight:600}
+  .wk{display:flex; gap:10px; align-items:flex-end; height:64px}
+  .wk .col{flex:1; display:flex; flex-direction:column; align-items:center; gap:4px}
+  .wk .bar{width:100%; background:#26a641; border-radius:2px 2px 0 0}
+  .wk .lbl{color:var(--faint); font-size:10px}
+  .cal{display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,11px); gap:2px}
+  .cal i{width:11px; height:11px; border-radius:2px; background:#161b22}
+
+  /* ── friends expanded ── */
+  .fgrid{display:grid; grid-template-columns:1.35fr 1fr; gap:14px}
+  table.fr{width:100%; border-collapse:collapse; font-size:12.5px}
+  table.fr th{color:var(--faint); text-align:left; font-weight:600; padding:3px 8px;
+    border-bottom:1px solid #262c33; font-size:11px}
+  table.fr th.sort{color:var(--blue)}
+  table.fr td{padding:4px 8px; color:var(--muted); white-space:nowrap; vertical-align:middle}
+  table.fr td.login{color:var(--ink)}
+  table.fr tr.sel{background:rgba(88,166,255,.10); outline:1px solid rgba(88,166,255,.35)}
+  table.fr tr.sel td.login::before{content:"▸ "; color:var(--blue)}
+  table.fr tr:not(.sel):not(.hd) td.login::before{content:"  "}
+  .fmeter{display:inline-flex; gap:1.5px; height:9px; width:60px; vertical-align:middle; margin-right:6px}
+  .fmeter i{flex:1; background:var(--track); border-radius:1.5px}
+  .state-hib{color:var(--ice)} .state-egg{color:var(--yellow)}
+  .preview{text-align:center}
+  .preview .stage{padding:14px 0 8px; border-bottom:2px dotted #262c33; margin-bottom:10px}
+  .preview .nm{font-weight:700; font-size:14px}
+  .preview .meta{color:var(--muted); font-size:12px; margin-bottom:8px}
+  .preview .chip{display:inline-block; border:1px solid; border-radius:4px; padding:0 6px; font-size:11px; margin:2px 0 10px}
+  .preview .prow{display:grid; grid-template-columns:64px 1fr 28px; gap:8px; align-items:center;
+    padding:2.5px 12px; color:var(--muted); font-size:12px; text-align:left}
+  .preview .val{text-align:right; font-weight:700}
+  .medals{margin-top:10px}
+  .medal{display:inline-block; border:1px solid rgba(210,153,34,.6); color:var(--yellow);
+    background:rgba(210,153,34,.08); border-radius:4px; padding:0 5px; margin:0 2px;
+    font-size:11px; font-weight:700}
+  .privrow{color:var(--faint); font-size:11px; margin-top:8px}
+
+  /* ── feed expanded ── */
+  .chips{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap}
+  .chip-f{border:1px solid var(--border); border-radius:20px; padding:1px 11px; color:var(--muted); font-size:11.5px}
+  .chip-f.on{color:var(--ink); border-color:var(--purple); box-shadow:0 0 8px rgba(188,140,242,.2)}
+  .day{color:var(--faint); font-size:11px; margin:12px 0 4px; letter-spacing:.5px}
+  .fev{display:grid; grid-template-columns:44px 78px 1fr auto; gap:10px; padding:4.5px 4px;
+    align-items:baseline; border-radius:4px}
+  .fev:hover{background:rgba(255,255,255,.02)}
+  .fev .t{color:var(--faint); font-size:11px}
+  .tag{border:1px solid; border-radius:3px; padding:0 6px; font-size:10.5px; font-weight:700;
+    justify-self:start}
+  .tag.merge{color:var(--green); border-color:rgba(63,185,80,.5)}
+  .tag.review{color:var(--cyan); border-color:rgba(57,197,207,.5)}
+  .tag.mention{color:var(--yellow); border-color:rgba(210,153,34,.5)}
+  .tag.medal{color:var(--orange); border-color:rgba(240,136,62,.5)}
+  .tag.rest{color:var(--ice); border-color:rgba(121,192,242,.45)}
+  .tag.security{color:var(--red); border-color:rgba(248,81,73,.5)}
+  .fev .tx{color:#b3bac2} .fev .tx b{color:var(--ink)}
+  .fev .tx .lnk{color:var(--blue); text-decoration:underline dotted; cursor:pointer}
+  .fev .fx{color:var(--green); font-weight:700; font-size:12px}
+  .fev .fx.neg{color:var(--red)}
+  .pollnote{color:var(--faint); font-size:11px; border-top:1px dashed #262c33;
+    margin-top:12px; padding-top:8px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>gitagotchi · expanded panel designs</h1>
+  <p class="note">The four main-screen panels, each opened into its full view via its
+  panel hotkey. Same data story throughout: @will, Rust, Zeruko at happiness 82.</p>
+
+  <!-- ═══════════ VITALS ═══════════ -->
+  <h2 class="sec">vitals · expanded — stat detail (<kbd>s</kbd>)</h2>
+  <div class="term"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">gh pet — stats</span></div>
+    <div class="screen">
+      <div class="vgrid">
+        <section class="panel" style="--pc:var(--green)"><span class="ptitle">┤ vitals · all 10 ├</span><span class="pkey">jk select · ↵ open</span>
+          <div class="vlist" id="vlist"></div>
+          <div class="detail" id="vdetail"></div>
+        </section>
+        <section class="panel" style="--pc:#7ee2a8"><span class="ptitle">┤ happiness · how it's built ├</span>
+          <div class="comp" id="vcomp"></div>
+          <div class="capnote" id="vcap"></div>
+        </section>
+      </div>
+      <footer class="ftr"><span class="kbtn"><b>jk</b> select</span><span class="kbtn"><b>↵</b> open on github</span><span class="kbtn"><b>esc</b> back</span><span class="sp"></span><span class="sync">✓ synced <span class="ago">31s ago</span></span></footer>
+    </div>
+  </div>
+  <p class="cap"><b>Design intent:</b> the stat panel is the <i>fix-it menu</i>. The selected stat
+  shows its 30-refresh history, the human "why" with concrete facts, its literal API source, and
+  <kbd>↵</kbd> opens the exact GitHub page that raises it. The right panel makes §3.1 legible:
+  each stat's weighted contribution to happiness, with the misery-cap rule stated where it's
+  relevant instead of buried in docs.</p>
+
+  <!-- ═══════════ ACTIVITY ═══════════ -->
+  <h2 class="sec">activity · expanded — graph view (<kbd>g</kbd>)</h2>
+  <div class="term"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">gh pet — activity</span></div>
+    <div class="screen">
+      <section class="panel" style="--pc:#39d353"><span class="ptitle">┤ activity · events/day ├</span><span class="pkey">tab range · esc back</span>
+        <div class="tabs"><span class="tab">14d</span><span class="tab on">60d</span><span class="tab">1y</span></div>
+        <div class="actwrap">
+          <div class="marks" id="marks-top"></div>
+          <pre class="graph" id="graph"></pre>
+          <div class="baseline" id="baseline"><span class="bl">90d baseline · 6.2</span></div>
+          <div class="marks" id="marks-bot"></div>
+          <div class="axis"><span>-60d</span><span>-45d</span><span>-30d</span><span>-15d</span><span>today</span></div>
+        </div>
+        <div class="actmeta">
+          <span>today <b>11</b></span><span>peak <b>16</b></span>
+          <span>active <b>9/14d</b> → fitness 55</span>
+          <span>quiet gaps ≥6h, last 24h: <b>1</b> <span style="color:var(--green)">✓ rested</span></span>
+        </div>
+        <div class="subgrid">
+          <div class="sub"><h4>your rhythm · avg events by weekday (90d)</h4>
+            <div class="wk" id="weekday"></div>
+          </div>
+          <div class="sub"><h4>last 12 weeks · contribution calendar</h4>
+            <div class="cal" id="cal"></div>
+          </div>
+        </div>
+      </section>
+      <footer class="ftr"><span class="kbtn"><b>tab</b> range</span><span class="kbtn"><b>esc</b> back</span><span class="sp"></span><span style="color:var(--faint)">rhythm beats volume — the baseline is yours, not global</span></footer>
+    </div>
+  </div>
+  <p class="cap"><b>Design intent:</b> the expanded view answers "am I in a healthy rhythm?", not
+  "am I productive?". Rest gaps are labeled in ice-blue and celebrated; the weekday chart makes
+  a quiet weekend visible as a <i>feature</i>; merges get orange ▲ ticks because they feed the pet.
+  The 1y tab reuses the same graph at week-granularity.</p>
+
+  <!-- ═══════════ FRIENDS ═══════════ -->
+  <h2 class="sec">friends · expanded (<kbd>f</kbd>)</h2>
+  <div class="term"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">gh pet — friends</span></div>
+    <div class="screen">
+      <div class="fgrid">
+        <section class="panel" style="--pc:var(--blue)"><span class="ptitle">┤ following · 23 ├</span><span class="pkey">type to filter</span>
+          <table class="fr">
+            <tr class="hd"><th></th><th>login</th><th>pet</th><th>lvl</th><th class="sort">❤ happy ▾</th><th>state</th></tr>
+            <tbody id="frbody"></tbody>
+          </table>
+        </section>
+        <section class="panel" style="--pc:#f1e05a"><span class="ptitle">┤ @mona · pabo ├</span><span class="pkey">preview</span>
+          <div class="preview" id="preview"></div>
+        </section>
+      </div>
+      <footer class="ftr"><span class="kbtn"><b>jk</b> move</span><span class="kbtn"><b>↵</b> visit</span><span class="kbtn"><b>c</b> compare</span><span class="kbtn"><b>esc</b> back</span><span class="sp"></span><span class="sync">✓ friend cache <span class="ago">2m</span></span></footer>
+    </div>
+  </div>
+  <p class="cap"><b>Design intent:</b> rows show real pixel pets, each in its owner's linguist
+  color — the list is a crowd, not a table. Selection drives the preview pane instantly from the
+  5-minute cache (no network on keystroke). Hibernating friends sink to the bottom with day
+  counts — "who's gone quiet" is one glance. The preview's health row says <i>private · by
+  design</i> rather than pretending the data doesn't exist.</p>
+
+  <!-- ═══════════ FEED ═══════════ -->
+  <h2 class="sec">feed · expanded — the liveness log</h2>
+  <div class="term"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">gh pet — feed</span></div>
+    <div class="screen">
+      <section class="panel" style="--pc:var(--purple)"><span class="ptitle">┤ feed · live · 60s ├</span><span class="pkey">1-7 filter · esc back</span>
+        <div class="chips" id="chips"></div>
+        <div id="feedlog"></div>
+        <div class="pollnote">poll: 60s per <span style="color:var(--cyan)">X-Poll-Interval</span> · If-Modified-Since/ETag ·
+          304s don't count against rate limit — staying alive costs ~0 · api <b style="color:var(--green)">187</b>/5000 · search tier untouched (30/min cap)</div>
+      </section>
+      <footer class="ftr"><span class="kbtn"><b>↵</b> open link</span><span class="kbtn"><b>esc</b> back</span><span class="sp"></span><span class="sync">⟳ next poll <span class="ago">in 42s</span></span></footer>
+    </div>
+  </div>
+  <p class="cap"><b>Design intent:</b> the feed narrates the stat system — every entry names its
+  event, its source, and its effect on the pet (<span style="color:var(--green)">+18 hunger</span>),
+  which is how users learn the mechanics without a manual. Filter chips map to notification
+  reasons. Security entries link out and pre-warn the sick state; messages themselves are never
+  shown — the pet is a doorbell, not a mail client.</p>
+</div>
+
+<script>
+const SPRITES = {"axolotl": ["........................", "....PP............PP....", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", "..PPPDOOOOOOOOOOOODPPP..", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", "..PPPDOROOOKKOOORODPPP..", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD......", ".....DOOWWWWWWOOOD.DD...", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "cat": [".......D........D.......", "......DOD......DOD......", ".....DOPOD....DOPOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOROOOKKOOOROD.....", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD..DD...", "......DOOOOOOOOOOD.DOD..", ".....DOOWWWWWWOOOD.DOD..", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "chick": ["...........DD...........", "...........DD...........", "........DOOOOOOD........", "......DDOOOOOOOODD......", ".....DOOOOOOOOOOOOD.....", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOPPOOOOOD.....", ".....DOROOOPPOOOROD.....", "....DDOOOOOOOOOOOODD....", "...DOODOOOOOOOOOODOOD...", "....DDOOOOOOOOOOOODD....", ".....DOOOOOOOOOOOOD.....", ".....DOOWWWWWWWWOOD.....", "......DOOWWWWWWOOD......", ".......DDOOOOOODD.......", ".........PP..PP.........", "........................", "........................"], "blob": ["........................", "........................", "........................", "........................", "........DOOOOOOD........", "......DDWWOOOOOODD......", ".....DOOOOOOOOOOOOD.....", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOROOOKKOOOROD.....", "....DOOOOOOOOOOOOOOD....", "....DOOOOOOOOOOOOOOD....", "...DOOOOOOOOOOOOOOOOD...", "...DOOSOOOOOOOOOOSOOD...", "...DOOOOOOOOOOOOOOOOD...", "....DDDDDDDDDDDDDDDD....", "........................", "........................"], "octopus": ["........................", "........................", "........DOOOOOOD........", "......DDOOOOOOOODD......", ".....DOOOOOOOOOOOOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOROOOKKOOOROD.....", ".....DOOOOOOOOOOOOD.....", ".....DOSOOOOOOOOSOD.....", ".....DOOOOOOOOOOOOD.....", "....DOODDOODDOODDOOD....", "....DOD.DOD..DOD.DOD....", "...DOD..DOD..DOD..DOD...", "...DD...DD....DD...DD...", "........................", "........................"], "frog": ["........................", "......DDD......DDD......", ".....DOKWD....DOKWD.....", ".....DOOOODDDDOOOOD.....", "....DOOOOOOOOOOOOOOD....", "....DOOOOOOOOOOOOOOD....", "....DOROKKKKKKKKOROD....", "....DOOOOOOOOOOOOOOD....", ".....DOOOOOOOOOOOOD.....", ".....DOOWWWWWWWWOOD.....", "....DOOWWWWWWWWWWOOD....", "....DOOWWWWWWWWWWOOD....", "...DODOWWWWWWWWWWODOD...", "...DOODWWWWWWWWWWDOOD...", "....DD.DOOOOOOOOD.DD....", "....DDD..........DDD....", "........................", "........................"], "tiger": [".......D........D.......", "......DOD......DOD......", ".....DOPOD....DOPOD.....", ".....DOOOOOOOOOOOOD.....", ".....DSOOOOOOOOOOSD.....", ".....DOKWOOOOOOKWOD.....", ".....DSOOOOOOOOOOSD.....", ".....DOROOOKKOOOROD.....", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD..DDD..", "......DOOOOOOOOOOD.DOD..", ".....DOOWWWWWWOOOD.DOD..", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "owl": ["........................", "......DD........DD......", "......DODOOOOOODOD......", "......DDOOOOOOOODD......", ".....DOWWWOOOOWWWOD.....", ".....DOWKWOOOOWKWOD.....", ".....DOWWWOPPOWWWOD.....", ".....DOROOOPPOOOROD.....", "....DDOOOOOOOOOOOODD....", "...DOODOOOOOOOOOODOOD...", "....DDOOOOOOOOOOOODD....", ".....DOOOOOOOOOOOOD.....", ".....DOOWWWWWWWWOOD.....", "......DOOWWWWWWOOD......", ".......DDOOOOOODD.......", ".........PP..PP.........", "........................", "........................"]};
+
+/* ── shared renderers ── */
+function lerp(a,b,t){return a+(b-a)*t}
+function grad(t){
+  const s=[[248,81,73],[210,153,34],[63,185,80]];
+  const [c1,c2,u]= t<.5?[s[0],s[1],t*2]:[s[1],s[2],(t-.5)*2];
+  return `rgb(${c1.map((v,i)=>Math.round(lerp(v,c2[i],u))).join(',')})`;
+}
+function meter(v, cls){
+  cls=cls||''; const cells = cls.includes('big')?24 : cls.includes('mini')?8 : 16;
+  let h='';
+  for(let i=0;i<cells;i++){
+    const on = v/100 > i/cells;
+    h+=`<i style="${on?`background:${grad((i+.5)/cells)}`:''}"></i>`;
+  }
+  return `<span class="meter ${cls}">${h}</span>`;
+}
+const vclass=v=>v>=50?'v-hi':v>=20?'v-mid':'v-lo';
+function hexToHsl(hex){let[r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h,s,l=(mx+mn)/2;
+  if(mx===mn){h=s=0}else{const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);
+  h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4);h/=6}return[h*360,s*100,l*100]}
+const hsl=(h,s,l)=>`hsl(${h.toFixed(0)},${s.toFixed(0)}%,${Math.max(6,Math.min(95,l)).toFixed(0)}%)`;
+function derive(hex){const[h,s,l0]=hexToHsl(hex);const l=Math.min(Math.max(l0,30),80);
+  return{O:hsl(h,s,l),D:hsl(h,s,l*.52),W:hsl(h,Math.min(s,55),l+(100-l)*.65),
+  S:hsl(h,s,l*.83),K:'#22272e',P:'#f778ba',R:hsl(h,Math.min(s,50),l+(100-l)*.35)}}
+function renderPix(el,map,pal,px){
+  el.classList.add('pix');
+  el.style.width=map[0].length*px+'px'; el.style.height=map.length*px+'px';
+  el.innerHTML='';
+  const fr=document.createDocumentFragment();
+  map.forEach((row,y)=>{[...row].forEach((ch,x)=>{
+    const c=pal[ch]; if(!c||ch==='.')return;
+    const d=document.createElement('i');
+    d.style.cssText=`position:absolute;left:${x*px}px;top:${y*px}px;width:${px}px;height:${px}px;background:${c}`;
+    fr.appendChild(d)});});
+  el.appendChild(fr);
+}
+function pixSpan(species,hex,px){
+  const sp=document.createElement('span');
+  renderPix(sp,SPRITES[species],derive(hex),px);
+  return sp;
+}
+
+/* ── VITALS ── */
+const SP8='▁▂▃▄▅▆▇█';
+const STATS=[
+ ['hunger',71,'+7',1],['energy',34,'−3'],['mood',68,'+2'],['fitness',55,'0'],
+ ['cleanliness',85,'+4'],['curiosity',25,'−1'],['social',60,'+5'],['wisdom',74,'0'],
+ ['health',90,'0',0,'🔒 self'],
+];
+const vl=document.getElementById('vlist');
+vl.innerHTML = STATS.map(([n,v,d,sel,lock])=>
+ `<div class="row${sel?' sel':''}"><span class="lb">${n}${lock?` <span class="lock">${lock}</span>`:''}</span>
+  ${meter(v)}<span class="val ${vclass(v)}">${v}</span>
+  <span class="trend" style="color:${d[0]==='+'?'var(--green)':d[0]==='−'?'var(--red)':'var(--faint)'}">${d}</span></div>`).join('')
+ + `<div class="vsep"></div>
+    <div class="row"><span class="lb">happiness</span>${meter(82)}<span class="val v-hi">82</span>
+    <span class="trend" style="color:var(--green)">+4</span></div>`;
+
+const hist=[38,42,40,45,48,52,50,47,55,58,54,60,63,60,66,62,58,64,68,65,70,67,64,69,72,70,68,66,70,71];
+document.getElementById('vdetail').innerHTML=`
+  <h3>hunger <span class="big">71</span> <span class="delta">▲ +7 today</span></h3>
+  ${meter(71,'big')}
+  <pre class="hist">${(()=>{let out='';for(let r=0;r<3;r++){let line='';
+    hist.forEach(v=>{const h=v/100*24,base=(2-r)*8,f=Math.max(0,Math.min(8,Math.round(h-base)));
+    line+=`<span style="color:rgba(88,166,255,${f?0.85:0.15})">${SP8[Math.max(0,f-1)]||'▁'}</span>`});
+    out+=line+String.fromCharCode(10)}return out})()}</pre>
+  <div style="color:var(--faint);font-size:10.5px">last 30 refreshes · 10-min cadence</div>
+  <div class="why"><b>3 PRs merged</b> in the last 7 days · newest <b>#482</b>, 4h ago ·
+    each merge feeds <b>25</b>, halving every 2 days — one more merge before Friday keeps the bowl full</div>
+  <div class="src">src: <span class="q">search  is:pr author:will is:merged merged:&gt;2026-07-08</span> · medium tier · 10 min</div>
+  <span class="openlink">↵ open your merged PRs on github ↗</span>`;
+
+const COMP=[
+ ['hunger',20,71],['mood',20,68],['energy',15,34],['fitness',10,55],['cleanliness',10,85],
+ ['social',10,60],['curiosity',5,25],['wisdom',5,74],['health',5,90],
+];
+document.getElementById('vcomp').innerHTML =
+ `<div style="color:var(--muted);font-size:11.5px;margin-bottom:10px">weight × current value = points toward 100</div>`+
+ COMP.map(([n,w,v])=>{
+  const pts=(w*v/100);
+  return `<div class="crow"><span>${n} <span style="color:var(--faint)">${w}%</span></span>
+    <span class="bar"><i style="width:${pts/20*100}%; background:${grad(v/100)}"></i></span>
+    <span class="pts">${pts.toFixed(1)}</span></div>`}).join('')
+ +`<div class="crow" style="border-top:1px dashed #262c33; margin-top:6px; padding-top:8px">
+    <span style="color:var(--ink); font-weight:700">happiness</span><span></span>
+    <span class="pts" style="color:var(--green)">82</span></div>`;
+document.getElementById('vcap').innerHTML =
+ `⚠ <b>misery cap:</b> if any stat falls below 20, happiness caps at 60 — starving can't be
+  averaged away. Closest to the line right now: <b>curiosity 25</b>
+  (star a repo or fork something new).`;
+
+/* ── ACTIVITY ── */
+const DAYS=[3,5,7,6,9,2,0,4,6,8,7,10,3,1,6,9,11,8,12,4,0,5,8,10,9,13,5,1,
+            7,10,12,11,14,6,2,8,11,13,12,16,7,0,0,0,0,0,9,12,14,11,15,6,2,10,13,15,12,16,8,11];
+const ROWS=6,CMAX=16,E8=' ▁▂▃▄▅▆▇█';
+const shade=v=>v===0?'#161b22':v<5?'#0e4429':v<9?'#006d32':v<13?'#26a641':'#39d353';
+let gl='';
+for(let r=0;r<ROWS;r++){let line='';
+  DAYS.forEach(v=>{const h=v/CMAX*ROWS*8,base=(ROWS-1-r)*8,
+    f=Math.max(0,Math.min(8,Math.round(h-base)));
+    const ch=E8[f]||'█'; line+=`<span style="color:${shade(v)}">${ch}${ch}</span>`});
+  gl+=line+'\n'}
+document.getElementById('graph').innerHTML=gl;
+requestAnimationFrame(()=>{
+  const g=document.getElementById('graph'),H=g.offsetHeight,W=g.offsetWidth;
+  const bl=document.getElementById('baseline');
+  bl.style.top=(g.offsetTop+H*(1-6.2/CMAX))+'px'; bl.style.left=g.offsetLeft+'px'; bl.style.width=W+'px';
+  const mt=document.getElementById('marks-top');
+  [[11,'▲'],[25,'▲'],[32,'▲'],[39,'▲ #482'],[57,'▲']].forEach(([d,s])=>{
+    const sp=document.createElement('span'); sp.textContent=s; sp.style.color='var(--orange)';
+    sp.style.left=(d/DAYS.length*W)+'px'; mt.appendChild(sp)});
+  const mb=document.getElementById('marks-bot');
+  [[41.2,'└─ rest gap · 5d ─┘','var(--ice)'],[5,'└ weekend ┘','var(--faint)']].forEach(([d,s,c])=>{
+    const sp=document.createElement('span'); sp.textContent=s; sp.style.color=c;
+    sp.style.left=(d/DAYS.length*W)+'px'; mb.appendChild(sp)});
+});
+const WK=[['mon',7.2],['tue',8.1],['wed',6.8],['thu',7.9],['fri',5.4],['sat',1.1],['sun',0.6]];
+document.getElementById('weekday').innerHTML=WK.map(([d,v])=>
+ `<div class="col"><div class="bar" style="height:${v/8.1*46}px; ${v<2?'background:#0e4429':''}"></div>
+  <span class="lbl">${d}</span></div>`).join('');
+const cal=document.getElementById('cal');
+let seed=7;
+for(let i=0;i<84;i++){
+  seed=(seed*73+19)%97;
+  const dow=i%7, base=dow>4?seed%3===0?1:0:(seed%17)/17*14;
+  const v=Math.round(base);
+  const el=document.createElement('i');
+  if(v>0) el.style.background=shade(v);
+  cal.appendChild(el);
+}
+
+/* ── FRIENDS ── */
+const FRIENDS=[
+ ['defunkt','Kilu','blob','#00add8','elder',91,''],
+ ['mona','Pabo','cat','#f1e05a','adult',88,'',1],
+ ['moredev','Huwi','owl','#b83998','adult',83,''],
+ ['ashtom','Zerudo','octopus','#5e5086','adult',77,''],
+ ['devkat','Tazu','tiger','#ff3e00','adult',71,''],
+ ['plantfan','Bopo','frog','#89e051','kid',66,''],
+ ['octocat','Vemi','axolotl','#dea584','adult',64,''],
+ ['busydev','Ruko','chick','#f1e05a','kid',58,''],
+ ['quietfriend','Nubi','—','#79c0f2','adult',null,'<span class="state-hib">💤 hibernating · 41d</span>'],
+ ['newdev','—','—','#d29922','egg',null,'<span class="state-egg">(✦) hatches in 3d</span>'],
+];
+const fb=document.getElementById('frbody');
+FRIENDS.forEach(([lg,pn,sp,hex,lvl,hp,state,sel])=>{
+  const tr=document.createElement('tr'); if(sel)tr.className='sel';
+  tr.innerHTML=`<td></td><td class="login">${lg}</td><td class="petcell"></td><td>${lvl}</td>
+   <td>${hp!=null?`<span class="fmeter">${[...Array(8)].map((_,k)=>
+     `<i style="${hp/100>k/8?`background:${grad((k+.5)/8)}`:''}"></i>`).join('')}</span><b class="${vclass(hp)}">${hp}</b>`:'—'}</td>
+   <td>${state}</td>`;
+  fb.appendChild(tr);
+  const cell=tr.querySelector('.petcell');
+  if(SPRITES[sp]){cell.appendChild(pixSpan(sp,hex,2));
+    cell.insertAdjacentHTML('beforeend',` ${pn}`);}
+  else cell.textContent=pn;
+});
+const pv=document.getElementById('preview');
+pv.innerHTML=`<div class="stage" id="pv-stage"></div>
+ <div class="nm">Pabo</div><div class="meta">the cat · adult · est. 2019</div>
+ <div class="chip" style="color:#f1e05a;border-color:#f1e05a66">■ javascript #f1e05a</div>
+ <div class="prow"><span>happy</span>${meter(88,'mini')}<span class="val v-hi">88</span></div>
+ <div class="prow"><span>hunger</span>${meter(58,'mini')}<span class="val v-hi">58</span></div>
+ <div class="prow"><span>energy</span>${meter(76,'mini')}<span class="val v-hi">76</span></div>
+ <div class="prow"><span>fitness</span>${meter(88,'mini')}<span class="val v-hi">88</span></div>
+ <div class="prow"><span>social</span>${meter(51,'mini')}<span class="val v-hi">51</span></div>
+ <div class="medals"><span class="medal">PS ×2</span><span class="medal">GB</span><span class="medal">SS</span></div>
+ <div class="privrow">health · ─ private, by design</div>`;
+const stage=document.getElementById('pv-stage');
+const big=pixSpan('cat','#f1e05a',6);
+big.style.filter='drop-shadow(0 0 12px #f1e05a44)'; stage.appendChild(big);
+
+/* ── FEED ── */
+document.getElementById('chips').innerHTML=
+ ['all','merge','review','mention','medal','rest','security'].map((c,i)=>
+ `<span class="chip-f${i===0?' on':''}">${i+1} ${c}</span>`).join('');
+const FEED=[
+ ['today',[
+  ['12:04','merge','PR <b>#482</b> merged in <b>cli</b> — <span class="lnk">parse OSC-8 links ↗</span> → Zeruko ate','+18 hunger'],
+  ['11:37','review','review requested · <b>plugin-core#12</b> — <span class="lnk">open the PR ↗</span> → pet holds the scroll',''],
+  ['10:52','mention','<b>@octobot</b> mentioned you in <b>cli#91</b> → ✉ envelope',''],
+  ['09:15','medal','achievement <b>Pull Shark ×3</b> detected on profile → celebrate burst','+shelf'],
+  ['08:00','rest','7h quiet gap overnight → pet slept while you did','+9 energy'],
+ ]],
+ ['yesterday',[
+  ['18:20','security','dependabot: <b>2 high</b> on <b>plugin-core</b> — <span class="lnk">view alerts ↗</span> → pet looks worried','−20 health'],
+  ['16:44','merge','PR <b>#479</b> merged in <b>dotfiles</b> → nom','+11 hunger'],
+  ['13:02','mention','<b>@mona</b> replied in <b>cli#88</b> → ✉',''],
+  ['09:30','rest','quiet morning, no events before 09:30 → stretching idle','+4 energy'],
+ ]],
+];
+document.getElementById('feedlog').innerHTML=FEED.map(([day,evs])=>
+ `<div class="day">── ${day} ──</div>`+evs.map(([t,k,tx,fx])=>
+ `<div class="fev"><span class="t">${t}</span><span class="tag ${k}">${k}</span>
+  <span class="tx">${tx}</span><span class="fx ${fx&&fx[0]==='−'?'neg':''}">${fx}</span></div>`).join('')).join('');
+</script>
+</body>
+</html>

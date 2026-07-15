@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitagotchi — dense mode (btop-style) design mockup</title>
+<style>
+  :root{
+    --bg:#010409; --term:#0d1117; --panelbg:#0d1117; --ink:#e6edf3; --muted:#8b949e;
+    --faint:#484f58; --track:#21262d; --border:#30363d;
+    --green:#3fb950; --green2:#26a641; --green3:#006d32; --green4:#0e4429;
+    --yellow:#d29922; --orange:#f0883e; --red:#f85149; --blue:#58a6ff;
+    --cyan:#39c5cf; --purple:#bc8cf2; --pink:#f778ba; --ice:#79c0f2;
+    --pet:#dea584; /* linguist: Rust */
+    --petdim:#a97e63;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg); color:var(--ink); margin:0; padding:28px 18px 60px;
+    font-family:ui-monospace,'SFMono-Regular','JetBrains Mono','Fira Code',Menlo,Consolas,monospace;
+    font-size:13px; line-height:1.35;}
+  .page{max-width:1060px; margin:0 auto}
+  h1.pagetitle{font-size:16px; color:var(--ink); font-weight:600; margin:0 0 4px}
+  p.note{color:var(--muted); margin:0 0 22px; max-width:70ch}
+  .cap{color:var(--muted); font-size:12px; margin:10px 2px 34px; max-width:88ch}
+  .cap b{color:var(--ink); font-weight:600}
+  kbd{background:#161b22;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;
+    padding:0 5px;font-family:inherit;font-size:11px;color:var(--ink)}
+
+  /* ── terminal chrome ─────────────────────────────── */
+  .term{background:var(--term); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 40px rgba(0,0,0,.55); overflow:hidden; position:relative}
+  .term::after{content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 3px);}
+  .tbar{display:flex; align-items:center; gap:7px; padding:8px 12px; background:#161b22;
+    border-bottom:1px solid var(--border); color:var(--muted); font-size:11px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .tbar .tt{margin-left:8px}
+  .screen{padding:14px 14px 10px}
+
+  /* ── header ──────────────────────────────────────── */
+  .hdr{display:flex; align-items:center; gap:14px; padding:2px 4px 12px; flex-wrap:wrap}
+  .logo{color:var(--pet); font-weight:700; text-shadow:0 0 12px rgba(222,165,132,.35)}
+  .logo .v{color:var(--faint); font-weight:400}
+  .hdr .who{color:var(--muted)} .hdr .who b{color:var(--ink);font-weight:600}
+  .hdr .sp{flex:1}
+  .badge{border:1px solid; border-radius:4px; padding:1px 7px; font-weight:600; cursor:pointer}
+  .badge.mail{color:var(--yellow); border-color:rgba(210,153,34,.55); animation:pulse 2.4s infinite}
+  .badge.rev{color:var(--cyan); border-color:rgba(57,197,207,.5)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(210,153,34,0)}50%{box-shadow:0 0 10px rgba(210,153,34,.45)}}
+  .api{color:var(--muted)} .api b{color:var(--green);font-weight:600}
+  .clock{color:var(--ink); font-weight:600}
+
+  /* ── panel frame (btop-style titled boxes) ───────── */
+  .grid{display:grid; grid-template-columns:1.18fr 1fr; gap:12px;
+    grid-template-areas:"pet vitals" "activity activity" "friends feed";}
+  .panel{border:1px solid var(--pc,var(--border)); border-radius:6px; position:relative;
+    padding:14px 12px 10px; background:var(--panelbg); min-width:0}
+  .ptitle{position:absolute; top:-9px; left:10px; background:var(--term); padding:0 7px;
+    color:var(--pc,var(--muted)); font-weight:700; font-size:12px; letter-spacing:.5px;
+    text-shadow:0 0 10px currentColor}
+  .pkey{position:absolute; top:-9px; right:10px; background:var(--term); padding:0 6px;
+    color:var(--faint); font-size:11px}
+  .panel.pet   {grid-area:pet;      --pc:var(--pet)}
+  .panel.vitals{grid-area:vitals;   --pc:var(--green)}
+  .panel.activity{grid-area:activity;--pc:#39d353}
+  .panel.friends{grid-area:friends; --pc:var(--blue)}
+  .panel.feed  {grid-area:feed;     --pc:var(--purple)}
+
+  /* ── pet stage ───────────────────────────────────── */
+  .stage{position:relative; height:240px; overflow:hidden}
+  pre.pet{position:absolute; left:50%; top:52px; transform:translateX(-62%);
+    margin:0; font-size:24px; line-height:1.12; color:var(--pet);
+    text-shadow:0 0 14px rgba(222,165,132,.30); filter:none}
+  pre.pet .face{color:#ffe9d6; font-weight:700}
+  pre.pet .spot{color:var(--petdim)}
+  pre.pet .crest{color:var(--pink)}
+  pre.pet .acc{color:var(--cyan)}
+  .ground{position:absolute; left:6px; right:6px; top:212px;
+    border-bottom:2px dotted #2c3440; opacity:.9}
+  .shelf{position:absolute; right:6px; top:6px; text-align:right}
+  .shelf .lbl{color:var(--faint); font-size:11px; margin-bottom:4px}
+  .medal{display:inline-block; border:1px solid rgba(210,153,34,.6); color:var(--yellow);
+    background:rgba(210,153,34,.08); border-radius:4px; padding:0 5px; margin:0 0 3px 4px;
+    font-size:11px; font-weight:700}
+  .toy{position:absolute; left:16%; top:196px; color:var(--blue); animation:bounce 1.6s steps(2) infinite}
+  @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  .heart{position:absolute; color:var(--pink); font-size:14px; opacity:0;
+    animation:float 3.4s linear infinite}
+  .heart.h2{animation-delay:1.2s} .heart.h3{animation-delay:2.3s; font-size:11px}
+  @keyframes float{0%{opacity:0; transform:translateY(0)}12%{opacity:.95}
+    80%{opacity:.5} 100%{opacity:0; transform:translateY(-96px)}}
+  .nameplate{position:absolute; left:0; right:0; top:216px; text-align:center; padding-top:6px}
+  .nameplate .nm{color:var(--ink); font-weight:700; font-size:14px}
+  .nameplate .meta{color:var(--muted); font-size:12px}
+  .nameplate .chip{color:var(--pet); border:1px solid rgba(222,165,132,.45);
+    border-radius:4px; padding:0 5px; font-size:11px; margin-left:6px}
+  .voice{margin-top:34px; color:#b3bac2; font-style:italic; font-size:12.5px}
+  .voice::before{content:"“"; color:var(--faint)} .voice::after{content:"”"; color:var(--faint)}
+
+  /* ── vitals ──────────────────────────────────────── */
+  .vrow{display:grid; grid-template-columns:96px 60px 1fr 30px; gap:8px;
+    align-items:center; padding:3.5px 0}
+  .vrow .lb{color:var(--muted)}
+  .vrow.headline .lb{color:var(--ink); font-weight:700}
+  .vrow .lock{color:var(--faint); font-size:10px}
+  .spark{color:rgba(88,166,255,.75); letter-spacing:1px; font-size:12px; white-space:nowrap; overflow:hidden}
+  .meter{display:flex; gap:2px; align-items:center; height:12px}
+  .meter i{flex:1; height:100%; background:var(--track); border-radius:2px; min-width:3px}
+  .vrow.headline .meter{height:16px}
+  .val{text-align:right; font-weight:700}
+  .v-hi{color:var(--green)} .v-mid{color:var(--yellow)} .v-lo{color:var(--red)}
+  .vsep{border-top:1px dashed #262c33; margin:6px 0}
+  .capnote{color:var(--faint); font-size:11px; padding:4px 0 0}
+
+  /* ── activity graph ──────────────────────────────── */
+  .actwrap{position:relative}
+  pre.graph{margin:0; line-height:1.02; font-size:14px; letter-spacing:0; overflow:hidden;
+    display:inline-block}
+  .baseline{position:absolute; left:0; right:110px; border-top:1px dashed rgba(240,136,62,.55)}
+  .baseline .bl{position:absolute; right:-108px; top:-8px; color:var(--orange); font-size:10.5px}
+  .axis{display:flex; justify-content:space-between; color:var(--faint); font-size:10.5px; margin-top:4px}
+  .annot{position:absolute; font-size:10.5px; color:var(--muted)}
+  .annot.gap{color:var(--ice)} .annot.mg{color:var(--orange)}
+  .actmeta{display:flex; gap:18px; color:var(--muted); font-size:11px; margin-top:8px}
+  .actmeta b{color:var(--ink)}
+
+  /* ── friends table ───────────────────────────────── */
+  table.fr{width:100%; border-collapse:collapse; font-size:12.5px}
+  table.fr th{color:var(--faint); text-align:left; font-weight:600; padding:2px 6px;
+    border-bottom:1px solid #262c33; font-size:11px}
+  table.fr td{padding:3.5px 6px; color:var(--muted); white-space:nowrap}
+  table.fr td.login{color:var(--ink)}
+  table.fr tr.sel{background:rgba(88,166,255,.10); outline:1px solid rgba(88,166,255,.35)}
+  table.fr tr.sel td.login::before{content:"▸ "; color:var(--blue)}
+  table.fr tr:not(.sel) td.login::before{content:"  "}
+  .mini{font-weight:700}
+  .fmeter{display:inline-flex; gap:1.5px; height:9px; width:56px; vertical-align:middle; margin-right:6px}
+  .fmeter i{flex:1; background:var(--track); border-radius:1.5px}
+  .state-hib{color:var(--ice)} .state-egg{color:var(--yellow)}
+
+  /* ── feed ────────────────────────────────────────── */
+  .fev{display:flex; gap:8px; padding:4px 0; align-items:baseline}
+  .fev .t{color:var(--faint); font-size:11px; min-width:38px}
+  .tag{border:1px solid; border-radius:3px; padding:0 5px; font-size:10.5px; font-weight:700}
+  .tag.merge{color:var(--green); border-color:rgba(63,185,80,.5)}
+  .tag.review{color:var(--cyan); border-color:rgba(57,197,207,.5)}
+  .tag.mention{color:var(--yellow); border-color:rgba(210,153,34,.5)}
+  .tag.medal{color:var(--orange); border-color:rgba(240,136,62,.5)}
+  .tag.rest{color:var(--ice); border-color:rgba(121,192,242,.45)}
+  .fev .tx{color:#b3bac2} .fev .tx b{color:var(--ink)} .fev .fx{color:var(--green); font-weight:700}
+
+  /* ── footer ──────────────────────────────────────── */
+  .ftr{display:flex; align-items:center; gap:8px; padding:12px 4px 4px; flex-wrap:wrap}
+  .kbtn{border:1px solid var(--border); border-radius:4px; padding:1px 8px; color:var(--muted)}
+  .kbtn b{color:var(--red); font-weight:700}
+  .ftr .sp{flex:1}
+  .sync{color:var(--green)} .sync .ago{color:var(--muted)}
+
+  /* ── compare & gallery terms ─────────────────────── */
+  .half{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .cw{color:var(--green); font-weight:700}
+  .cmp-pet{font-size:18px; line-height:1.1; margin:6px 0 10px; text-shadow:0 0 10px rgba(222,165,132,.25)}
+  .cmp-pet.p2{color:#e2c08d; text-shadow:0 0 10px rgba(226,192,141,.25)}
+  .crow{display:grid; grid-template-columns:58px 1fr 30px 16px; gap:8px; align-items:center; padding:3px 0}
+  .crow .lb{color:var(--muted)}
+  .gallery{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:8px}
+  .gterm .screen{padding:10px}
+  .gterm pre{margin:6px 0; font-size:15px; line-height:1.15}
+  .gterm .gcap{color:var(--muted); font-size:11px}
+  .dimmed{opacity:.55}
+  .sickpet{color:var(--petdim); text-shadow:none}
+  .thermo{color:var(--red); font-weight:700}
+  .cocoon{color:var(--ice); text-shadow:0 0 12px rgba(121,192,242,.3); animation:breathe 2s steps(2) infinite}
+  @keyframes breathe{50%{letter-spacing:1px}}
+  .frozen{color:var(--ice)}
+  .term.sick-t{--pc:var(--red)} .sick-t .panel{--pc:var(--red)}
+
+  /* ── palette legend ──────────────────────────────── */
+  table.pal{border-collapse:collapse; font-size:12px; margin-top:10px}
+  table.pal th{color:var(--faint); text-align:left; font-weight:600; padding:3px 14px 3px 0}
+  table.pal td{padding:3px 14px 3px 0; color:var(--muted)}
+  table.pal td.hex{color:var(--ink)}
+  .sw{display:inline-block; width:26px; height:13px; border-radius:3px; vertical-align:middle;
+    margin-right:8px; border:1px solid rgba(255,255,255,.12)}
+  h2.sec{font-size:14px; color:var(--ink); margin:40px 0 6px}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr;
+    grid-template-areas:"pet" "vitals" "activity" "friends" "feed"} .half{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 class="pagetitle">gitagotchi · dense mode — btop-style visual design</h1>
+  <p class="note">Full-color mockup of the main screen at ≥ 110×32. The pet is <b>terminal pixel
+  art</b>: each cell is a half-block <span style="color:#dea584">▀</span> carrying two pixels
+  (foreground = top px, background = bottom px), so this 24×18 sprite costs 24 cols × 9 rows —
+  plain ANSI truecolor, no image protocol. Panels, meters and graphs follow btop's grammar.</p>
+
+  <!-- ═══════════════ MAIN SCREEN ═══════════════ -->
+  <div class="term">
+    <div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tt">gh pet — 132×38 · truecolor</span></div>
+    <div class="screen">
+
+      <header class="hdr">
+        <span class="logo">gitagotchi <span class="v">v1.0</span></span>
+        <span class="who"><b>@will</b> · id 3151702 · rust</span>
+        <span class="sp"></span>
+        <span class="badge mail">✉ 2</span>
+        <span class="badge rev">⎘ 1</span>
+        <span class="api">api <b>187</b>/5000</span>
+        <span class="clock" id="clock">12:04:31</span>
+      </header>
+
+      <div class="grid">
+
+        <!-- pet panel -->
+        <section class="panel pet">
+          <span class="ptitle">┤ zeruko ├</span><span class="pkey">home</span>
+          <div class="stage">
+            <div class="shelf">
+              <div class="lbl">medals</div>
+              <span class="medal">PS ×3</span><span class="medal">YOLO</span><br>
+              <span class="medal">QD</span><span class="medal">GB</span><span class="medal" style="opacity:.55">+2</span>
+            </div>
+            <div id="pixpet" style="position:absolute; left:50%; top:34px; transform:translateX(-50%)"></div>
+            <span class="heart" style="left:44%; top:120px">♥</span>
+            <span class="heart h2" style="left:56%; top:132px">♥</span>
+            <span class="heart h3" style="left:50%; top:126px">♥</span>
+            <span class="toy">●</span>
+            <div class="ground"></div>
+            <div class="nameplate">
+              <span class="nm">Zeruko</span>
+              <span class="meta"> · axolotl · adult · est. 2014</span>
+              <span class="chip">■ rust #dea584</span>
+            </div>
+          </div>
+          <div class="voice">Merged #482 four hours ago — Zeruko is well fed.</div>
+        </section>
+
+        <!-- vitals panel -->
+        <section class="panel vitals">
+          <span class="ptitle">┤ vitals ├</span><span class="pkey">s</span>
+          <div id="vitals"></div>
+          <div class="capnote">▸ energy low — 14 days above your usual pace, no rest gap ≥ 6 h in 24 h</div>
+        </section>
+
+        <!-- activity graph -->
+        <section class="panel activity">
+          <span class="ptitle">┤ activity · events/day · 60d ├</span><span class="pkey">g</span>
+          <div class="actwrap">
+            <pre class="graph" id="graph"></pre>
+            <div class="baseline" id="baseline"><span class="bl">90d baseline · 6.2</span></div>
+            <div class="annot gap" id="an-gap">└ rest gap · 4d ┘</div>
+            <div class="annot mg" id="an-mg">▲ #482 merged</div>
+          </div>
+          <div class="axis"><span>-60d</span><span>-45d</span><span>-30d</span><span>-15d</span><span>today</span></div>
+          <div class="actmeta">
+            <span>today <b>11</b></span><span>peak <b>16</b></span>
+            <span>active <b>9/14d</b> → fitness 55</span>
+            <span>rhythm beats volume — baseline is <b>yours</b>, not global</span>
+          </div>
+        </section>
+
+        <!-- friends panel -->
+        <section class="panel friends">
+          <span class="ptitle">┤ friends · 23 ├</span><span class="pkey">f</span>
+          <table class="fr">
+            <tr><th></th><th>login</th><th>pet</th><th>lvl</th><th>❤ happy</th><th>state</th></tr>
+            <tbody id="frbody"></tbody>
+          </table>
+        </section>
+
+        <!-- feed panel -->
+        <section class="panel feed">
+          <span class="ptitle">┤ feed ├</span><span class="pkey">live · 60s</span>
+          <div id="feed"></div>
+        </section>
+      </div>
+
+      <footer class="ftr">
+        <span class="kbtn"><b>f</b> friends</span><span class="kbtn"><b>s</b> stats</span>
+        <span class="kbtn"><b>c</b> compare</span><span class="kbtn"><b>g</b> graph</span>
+        <span class="kbtn"><b>r</b> refresh</span><span class="kbtn"><b>?</b> help</span>
+        <span class="kbtn"><b>q</b> quit</span>
+        <span class="sp"></span>
+        <span class="sync">✓ synced <span class="ago">12s ago</span></span>
+      </footer>
+    </div>
+  </div>
+  <p class="cap"><b>Reading the screen:</b> every panel is a btop-style titled box whose border
+  color is its identity — the pet panel borrows the linguist color, vitals are green, activity is
+  contribution-green, friends blue, feed purple. Meters are gradient cells (red→amber→green along
+  the scale, value printed — color is never the only encoding). Sparklines show each stat's
+  10-refresh history in a single quiet blue. The pet blinks, gills sway, the ball bounces
+  (curiosity ≥ 60), hearts float (happiness &gt; 80) — all session-local, per the invariant.</p>
+
+  <!-- ═══════════════ COMPARE ═══════════════ -->
+  <h2 class="sec">Compare view (<kbd>c</kbd>)</h2>
+  <div class="term">
+    <div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tt">gh pet compare mona</span></div>
+    <div class="screen">
+      <div class="half">
+        <section class="panel" style="--pc:var(--pet)"><span class="ptitle">┤ you · zeruko ├</span>
+          <div id="cmp-me" style="text-align:center"></div>
+          <div id="cmp-me-rows"></div>
+        </section>
+        <section class="panel" style="--pc:#e2c08d"><span class="ptitle">┤ @mona · pabo ├</span>
+          <div id="cmp-them" style="text-align:center"></div>
+          <div id="cmp-them-rows"></div>
+        </section>
+      </div>
+      <footer class="ftr"><span class="kbtn"><b>esc</b> back</span><span class="sp"></span>
+        <span style="color:var(--faint)">friendly rivalry, not a leaderboard</span></footer>
+    </div>
+  </div>
+  <p class="cap"><b>◂</b> marks the higher stat per row; no total-winner line exists on purpose.
+  Pabo's palette derives from @mona's top language; health is excluded — it wouldn't be a fair
+  column (private by design).</p>
+
+  <!-- ═══════════════ STATE GALLERY ═══════════════ -->
+  <h2 class="sec">State gallery</h2>
+  <div class="gallery">
+    <div class="term gterm"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">sleeping</span></div>
+      <div class="screen dimmed">
+        <pre style="color:#8b949e">        <span style="color:#79c0f2">Z</span>
+   <span style="color:#f778ba">~|~</span>  <span style="color:#79c0f2">z</span>
+ <span style="color:#dea584">≼(</span><span style="color:#ffe9d6">-.-</span><span style="color:#dea584">)≽</span>
+   <span style="color:#dea584">(___)~</span></pre>
+        <div class="gcap">rest gap ≥ 6 h detected → whole UI dims one step; voice goes quiet.
+        Energy refills while the feed sleeps.</div>
+      </div>
+    </div>
+    <div class="term gterm sick-t"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">sick — self only</span></div>
+      <div class="screen">
+        <pre class="sickpet">   \¡/
+ ≼(<span style="color:#ffe9d6">x.x</span>)≽ <span class="thermo">▍</span>
+   (   )~</pre>
+        <div class="gcap"><span style="color:#f85149">health 40</span> · 2 high Dependabot alerts on
+        <b style="color:#e6edf3">plugin-core</b>. Pet renders pale; panel borders shift red.
+        Medicine = fixing the alerts. Invisible on friends.</div>
+      </div>
+    </div>
+    <div class="term gterm"><div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="tt">hibernating</span></div>
+      <div class="screen">
+        <pre class="cocoon">  ⎛⎛ zZ ⎞⎞
+ ⎛⎛ (-.-) ⎞⎞
+  ⎝⎝______⎠⎠</pre>
+        <div class="gcap">≥ 30 d quiet → cocoon, breathing every 4 ticks. Bars freeze at
+        <span class="frozen">❄ 71 ❄ 34 ❄ 85</span> — ice-blue, no decay, no judgment.
+        First push cracks it like the hatch egg.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ PALETTE ═══════════════ -->
+  <h2 class="sec">Palette — roles, not decoration</h2>
+  <table class="pal" id="pal"></table>
+  <p class="cap" style="margin-top:14px">Surface & ink are GitHub-dark (<b>#0d1117</b> /
+  <b>#e6edf3</b>) — the pet lives where the data lives. Meter gradient encodes status
+  redundantly with printed values; sparklines stay single-hue so the only saturated identity
+  colors on screen are the pets themselves. Tier-A (no truecolor) falls back to the §6 ASCII
+  sprites and ANSI-256.</p>
+</div>
+
+<script>
+/* ───────────── pixel pet (half-block simulation) ───────────── */
+const PAL = {O:'#dea584', D:'#a97e63', W:'#ffe9d6', K:'#22272e', P:'#f778ba',
+             R:'#e8927c', S:'#c98f70', '.':null};
+const F1 = [
+"........................",
+"....PP............PP....",
+"......DOOOOOOOOOOD......",
+".....DOOOOOOOOOOOOD.....",
+"..PPPDOOOOOOOOOOOODPPP..",
+".....DOKWOOOOOOKWOD.....",
+".....DOOOOOOOOOOOOD.....",
+"..PPPDOROOOKKOOORODPPP..",
+".....DOOOOOOOOOOOOD.....",
+"......DOOOOOOOOOOD......",
+".......DDOOOOOODD.......",
+"......DOSOOOOOOSOD......",
+".....DOOWWWWWWOOOD.DD...",
+".....DOOWWWWWWOOODDOD...",
+"......DOOOOOOOOOOD......",
+".......DOD....DOD.......",
+"........................",
+"........................"];
+const F2 = [
+"........................",
+"...PP..............PP...",
+"......DOOOOOOOOOOD......",
+".....DOOOOOOOOOOOOD.....",
+".PPPPDOOOOOOOOOOOODPPPP.",
+".....DOKWOOOOOOKWOD.....",
+".....DOOOOOOOOOOOOD.....",
+".PPPPDOROOOKKOOORODPPPP.",
+".....DOOOOOOOOOOOOD.....",
+"......DOOOOOOOOOOD......",
+".......DDOOOOOODD.......",
+"......DOSOOOOOOSOD.DD...",
+".....DOOWWWWWWOOODDOD...",
+".....DOOWWWWWWOOOD......",
+"......DOOOOOOOOOOD......",
+".......DOD....DOD.......",
+"........................",
+"........................"];
+const BLINK = F1.map((r,i)=> i===5 ? r.replace(/KW/g,'DD') : r);
+
+const PX = 9;
+function renderPix(el, map, px){
+  px = px || PX;
+  el.style.width  = map[0].length*px+'px';
+  el.style.height = map.length*px+'px';
+  el.style.position = el.style.position || 'relative';
+  el.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  map.forEach((row,y)=>{ [...row].forEach((ch,x)=>{
+    const c = PAL[ch]; if(!c) return;
+    const d = document.createElement('i');
+    d.style.cssText = `position:absolute;left:${x*px}px;top:${y*px}px;width:${px}px;height:${px}px;background:${c}`;
+    frag.appendChild(d);
+  });});
+  el.appendChild(frag);
+  el.style.filter = 'drop-shadow(0 0 14px rgba(222,165,132,.28))';
+}
+const pet = document.getElementById('pixpet');
+let flip = false, t = 0;
+renderPix(pet, F1);
+setInterval(()=>{ t++;
+  if(t % 9 === 0){ renderPix(pet, BLINK); }        // blink ~every 5.4s
+  else { flip = !flip; renderPix(pet, flip?F2:F1); } // gill sway @ 600ms
+}, 600);
+
+/* ───────────── meters & vitals ───────────── */
+function lerp(a,b,t){return a+(b-a)*t}
+function grad(t){ // red -> amber -> green along the scale
+  const stops=[[248,81,73],[210,153,34],[63,185,80]];
+  const seg = t<.5 ? [stops[0],stops[1],t*2] : [stops[1],stops[2],(t-.5)*2];
+  const [c1,c2,u]=seg;
+  return `rgb(${c1.map((v,i)=>Math.round(lerp(v,c2[i],u))).join(',')})`;
+}
+function meter(value, cells){
+  cells = cells || 18;
+  let h='';
+  for(let i=0;i<cells;i++){
+    const t=(i+0.5)/cells, on = value/100 > i/cells;
+    h += `<i style="${on?`background:${grad(t)}`:''}"></i>`;
+  }
+  return `<span class="meter">${h}</span>`;
+}
+const SP='▁▂▃▄▅▆▇█';
+const spark = a => a.map(v=>SP[Math.min(7,Math.round(v/100*7))]).join('');
+const vclass = v => v>=50?'v-hi':v>=20?'v-mid':'v-lo';
+
+const STATS = [
+ ['happiness',82,[70,72,68,74,76,73,78,80,79,82],1],
+ ['hunger',71,[40,45,52,48,60,66,58,64,70,71]],
+ ['energy',34,[70,65,60,55,50,44,40,38,36,34]],
+ ['mood',68,[55,58,60,62,60,64,66,65,67,68]],
+ ['fitness',55,[48,50,50,52,54,52,55,56,55,55]],
+ ['clean',85,[70,72,75,78,80,82,83,84,85,85]],
+ ['curiosity',25,[40,38,35,33,30,28,27,26,25,25]],
+ ['social',60,[45,48,52,55,54,58,60,61,60,60]],
+ ['wisdom',74,[70,70,71,71,72,72,73,73,74,74]],
+ ['health',90,[90,90,88,90,92,90,90,90,90,90],0,'🔒 self'],
+];
+document.getElementById('vitals').innerHTML = STATS.map(([n,v,h,head,lock])=>
+  `<div class="vrow${head?' headline':''}">
+     <span class="lb">${head?'❤ ':''}${n}${lock?` <span class="lock">${lock}</span>`:''}</span>
+     <span class="spark">${spark(h)}</span>${meter(v)}
+     <span class="val ${vclass(v)}">${v}</span></div>${head?'<div class="vsep"></div>':''}`
+).join('');
+
+/* ───────────── activity graph ───────────── */
+const DAYS=[3,5,7,6,9,2,0, 4,6,8,7,10,3,1, 6,9,11,8,12,4,0, 5,8,10,9,13,5,1,
+            7,10,12,11,14,6,2, 8,11,13,12,16,7,0, 0,0,0,0, 9,12,14,11,15,6,2, 10,13,15,12,16,8,11];
+const ROWS=6, CMAX=16, EIGHTH=' ▁▂▃▄▅▆▇█';
+const shade = v => v===0?'#161b22': v<5?'#0e4429': v<9?'#006d32': v<13?'#26a641':'#39d353';
+let glines='';
+for(let r=0;r<ROWS;r++){
+  let line='';
+  DAYS.forEach(v=>{
+    const hgt = v/CMAX*ROWS*8, base=(ROWS-1-r)*8;
+    const fill = Math.max(0, Math.min(8, Math.round(hgt-base)));
+    const ch = EIGHTH[fill]||'█';
+    line += `<span style="color:${shade(v)}">${ch}${ch}</span>`;
+  });
+  glines += line+'\n';
+}
+document.getElementById('graph').innerHTML=glines;
+/* baseline + annotations positioned after layout */
+requestAnimationFrame(()=>{
+  const g=document.getElementById('graph'), H=g.offsetHeight, W=g.offsetWidth;
+  const bl=document.getElementById('baseline');
+  bl.style.top=(g.offsetTop + H*(1-6.2/CMAX))+'px';
+  const gap=document.getElementById('an-gap');
+  gap.style.left=(41.8/DAYS.length*W)+'px'; gap.style.top=(g.offsetTop+H*0.42)+'px';
+  const mg=document.getElementById('an-mg');
+  mg.style.left=(37.5/DAYS.length*W)+'px'; mg.style.top=(g.offsetTop-16)+'px';
+});
+
+/* ───────────── friends ───────────── */
+const FRIENDS=[
+ ['mona','Pabo','^ᴥ^','#f1e05a','adult',88,''],
+ ['defunkt','Kilu','(oo)','#00add8','elder',91,'',1],
+ ['ashtom','Zerudo','o/|\\','#58a6ff','adult',77,''],
+ ['octocat','Vemi','≼o≽','#dea584','adult',64,''],
+ ['busydev','Ruko','(o)>','#bc8cf2','kid',58,''],
+ ['quietfriend','Nubi','⎛-⎞','#79c0f2','adult',null,'<span class="state-hib">💤 hibernating · 41d</span>'],
+ ['newdev','—','(✦)','#d29922','egg',null,'<span class="state-egg">hatches in 3d</span>'],
+];
+document.getElementById('frbody').innerHTML = FRIENDS.map(([lg,pn,mg,col,lvl,hp,state],i)=>
+ `<tr${i===0?' class="sel"':''}><td></td><td class="login">${lg}</td>
+   <td><span class="mini" style="color:${col}">${mg}</span> ${pn}</td><td>${lvl}</td>
+   <td>${hp!=null?`<span class="fmeter">${[...Array(8)].map((_,k)=>
+      `<i style="${hp/100>k/8?`background:${grad((k+.5)/8)}`:''}"></i>`).join('')}</span><b class="${vclass(hp)}">${hp}</b>`:'—'}</td>
+   <td>${state}</td></tr>`).join('');
+
+/* ───────────── feed ───────────── */
+const FEED=[
+ ['12:04','merge','PR <b>#482</b> merged in <b>cli</b> → Zeruko ate','+18 hunger'],
+ ['11:37','review','review requested · <b>plugin-core#12</b> → pet holds the scroll',''],
+ ['10:52','mention','<b>@octobot</b> mentioned you in <b>cli#91</b> → ✉',''],
+ ['09:15','medal','achievement: <b>Pull Shark ×3</b> → celebrate burst','+shelf'],
+ ['08:00','rest','7 h quiet gap detected overnight','+9 energy'],
+];
+document.getElementById('feed').innerHTML = FEED.map(([t,k,tx,fx])=>
+ `<div class="fev"><span class="t">${t}</span><span class="tag ${k}">${k}</span>
+  <span class="tx">${tx}</span>${fx?`<span class="fx">${fx}</span>`:''}</div>`).join('')
+ + `<div class="fev"><span class="t"></span><span class="tx" style="color:#484f58">
+    poll: 60s · ETag · 304s are free — being alive costs ~0 rate limit</span></div>`;
+
+/* ───────────── compare ───────────── */
+const CMP=[['happy',82,88],['hunger',71,58],['energy',34,76],['fit',55,88],['social',60,51],['clean',85,79]];
+function cmpRows(mine){
+  return CMP.map(([n,a,b])=>{
+    const v=mine?a:b, w=mine? a>=b : b>a;
+    return `<div class="crow"><span class="lb">${n}</span>${meter(v,14)}
+      <span class="val ${vclass(v)}">${v}</span><span class="cw">${w?'◂':''}</span></div>`;
+  }).join('');
+}
+document.getElementById('cmp-me-rows').innerHTML=cmpRows(true);
+document.getElementById('cmp-them-rows').innerHTML=cmpRows(false);
+const meMini=document.createElement('div'); renderPix(meMini,F1,5);
+meMini.style.display='inline-block'; document.getElementById('cmp-me').appendChild(meMini);
+document.getElementById('cmp-them').innerHTML =
+ `<pre class="cmp-pet p2">  /\\_/\\
+ ( o‿o )
+  (   )~
+   ˇ ˇ</pre><div style="color:#8b949e;font-size:11px">JS-yellow cat · stripes · collar tag</div>`;
+
+/* ───────────── palette legend ───────────── */
+const ROLES=[
+ ['#0d1117','surface','terminal background — GitHub dark'],
+ ['#e6edf3','ink','labels, values, names'],
+ ['#8b949e','muted ink','secondary text, table rows'],
+ ['#dea584','pet / identity','linguist color of top language — the ONLY large saturated area'],
+ ['#3fb950','good / meter high','also vitals panel border'],
+ ['#d29922','warn / meter mid','mail badge ✉'],
+ ['#f85149','low / sick','meter low end, sick borders, key letters'],
+ ['#58a6ff','info','friends panel, sparklines'],
+ ['#39c5cf','review','⎘ scroll, review tags'],
+ ['#bc8cf2','feed','feed panel border'],
+ ['#79c0f2','hibernation','cocoon, frozen ❄ stats'],
+ ['#39d353','activity','contribution-graph greens (4-step sequential ramp)'],
+];
+document.getElementById('pal').innerHTML =
+ '<tr><th></th><th>hex</th><th>role</th><th>notes</th></tr>' +
+ ROLES.map(([h,r,n])=>`<tr><td><span class="sw" style="background:${h}"></span></td>
+   <td class="hex">${h}</td><td style="color:#e6edf3">${r}</td><td>${n}</td></tr>`).join('');
+
+/* clock */
+setInterval(()=>{ const d=new Date();
+  document.getElementById('clock').textContent=d.toTimeString().slice(0,8); },1000);
+</script>
+</body>
+</html>

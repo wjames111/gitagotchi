@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitagotchi — compare view design</title>
+<style>
+  :root{
+    --bg:#010409; --term:#0d1117; --ink:#e6edf3; --muted:#8b949e; --faint:#484f58;
+    --track:#21262d; --border:#30363d;
+    --green:#3fb950; --yellow:#d29922; --orange:#f0883e; --red:#f85149; --blue:#58a6ff;
+    --cyan:#39c5cf; --purple:#bc8cf2; --ice:#79c0f2;
+    --me:#dea584; --them:#f1e05a;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg); color:var(--ink); margin:0; padding:28px 18px 60px;
+    font-family:ui-monospace,'SFMono-Regular','JetBrains Mono','Fira Code',Menlo,Consolas,monospace;
+    font-size:13px; line-height:1.4}
+  .page{max-width:1080px; margin:0 auto}
+  h1{font-size:16px; margin:0 0 4px}
+  p.note{color:var(--muted); margin:0 0 26px; max-width:76ch}
+  .cap{color:var(--muted); font-size:12px; margin:10px 2px 6px; max-width:92ch}
+  .cap b{color:var(--ink)}
+  kbd{background:#161b22;border:1px solid var(--border);border-bottom-width:2px;
+    border-radius:4px;padding:0 5px;font:inherit;font-size:11px}
+
+  .term{background:var(--term); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 40px rgba(0,0,0,.55); overflow:hidden; position:relative}
+  .term::after{content:""; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 3px)}
+  .tbar{display:flex; align-items:center; gap:7px; padding:8px 12px; background:#161b22;
+    border-bottom:1px solid var(--border); color:var(--muted); font-size:11px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .tbar .tt{margin-left:8px}
+  .screen{padding:16px 16px 10px}
+  .panel{border:1px solid var(--pc,var(--border)); border-radius:6px; position:relative;
+    padding:16px 14px 12px; background:var(--term)}
+  .ptitle{position:absolute; top:-9px; left:10px; background:var(--term); padding:0 7px;
+    color:var(--pc,var(--muted)); font-weight:700; font-size:12px; text-shadow:0 0 10px currentColor}
+  .pkey{position:absolute; top:-9px; right:10px; background:var(--term); padding:0 6px;
+    color:var(--faint); font-size:11px}
+  .ftr{display:flex; align-items:center; gap:8px; padding:12px 4px 4px; flex-wrap:wrap}
+  .kbtn{border:1px solid var(--border); border-radius:4px; padding:1px 8px; color:var(--muted)}
+  .kbtn b{color:var(--red); font-weight:700}
+  .ftr .sp{flex:1}
+  .pix{position:relative; display:inline-block; image-rendering:pixelated}
+
+  /* ── header strip: two identities facing off ── */
+  .heads{display:grid; grid-template-columns:1fr 90px 1fr; align-items:end; margin-bottom:6px}
+  .head{text-align:center}
+  .head .stagewrap{height:130px; display:flex; align-items:flex-end; justify-content:center}
+  .head .nm{font-weight:700; font-size:14px; margin-top:8px}
+  .head .who{color:var(--muted); font-size:12px}
+  .head .chip{display:inline-block; border:1px solid; border-radius:4px; padding:0 6px;
+    font-size:11px; margin-top:5px}
+  .vs{color:var(--faint); text-align:center; font-size:11px; padding-bottom:52px}
+  .vs .x{font-size:18px; color:var(--ink); font-weight:700; display:block}
+  .groundline{border-bottom:2px dotted #262c33; margin:0 20px 16px}
+
+  /* ── mirrored stat rows ── */
+  .rows{max-width:880px; margin:0 auto}
+  .crow{display:grid; grid-template-columns:56px 26px 1fr 104px 1fr 26px 56px; gap:8px;
+    align-items:center; padding:4px 0}
+  .crow .lb{text-align:center; color:var(--muted); font-size:12px}
+  .crow .val{font-weight:700; font-size:12.5px}
+  .crow .val.l{text-align:right} .crow .val.r{text-align:left}
+  .crow .win{color:var(--green); font-weight:700; font-size:13px; text-align:center}
+  .bar{height:11px; background:var(--track); border-radius:2px; position:relative; overflow:hidden}
+  .bar i{position:absolute; top:0; bottom:0; border-radius:2px}
+  .bar.l i{right:0; background:var(--me)}
+  .bar.r i{left:0; background:var(--them)}
+  .bar.dim i{opacity:.45}
+  .crow.head-row{color:var(--faint); font-size:10.5px; padding:0 0 6px}
+  .crow.head-row div{text-align:center}
+  .hsep{border-top:1px dashed #262c33; margin:8px 0}
+
+  /* ── under-sections ── */
+  .under{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; max-width:880px;
+    margin-left:auto; margin-right:auto}
+  .sub{border:1px solid #262c33; border-radius:6px; padding:12px}
+  .sub h4{margin:0 0 8px; font-size:11.5px; color:var(--muted); font-weight:600}
+  .actmini{line-height:1.02; font-size:11px; margin:0}
+  .legend{display:flex; gap:16px; color:var(--faint); font-size:10.5px; margin-top:6px}
+  .legend .sw{display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:5px}
+  .medrow{display:flex; align-items:center; gap:6px; padding:3px 0; color:var(--muted); font-size:12px}
+  .medrow .side{width:44px; color:var(--faint); font-size:10.5px}
+  .medal{display:inline-block; border:1px solid rgba(210,153,34,.6); color:var(--yellow);
+    background:rgba(210,153,34,.08); border-radius:4px; padding:0 5px; font-size:11px; font-weight:700}
+  .medal.shared{border-color:rgba(63,185,80,.6); color:var(--green); background:rgba(63,185,80,.07)}
+  .insights{max-width:880px; margin:14px auto 0; border:1px solid #262c33; border-radius:6px; padding:12px}
+  .insights h4{margin:0 0 8px; font-size:11.5px; color:var(--muted); font-weight:600}
+  .ins{display:flex; gap:9px; padding:3px 0; color:#b3bac2; font-size:12.5px; align-items:baseline}
+  .ins .d{width:8px; height:8px; border-radius:2px; flex:none; position:relative; top:0}
+  .ins b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>gitagotchi · compare view (<kbd>c</kbd> on a friend)</h1>
+  <p class="note">Head-to-head with @mona. Pets face each other across the center; every
+  mirrored bar is colored by <i>whose</i> it is (your linguist color vs theirs), with the
+  higher side marked. Health never appears — it wouldn't be a fair column.</p>
+
+  <div class="term">
+    <div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tt">gh pet compare mona</span></div>
+    <div class="screen">
+      <section class="panel" style="--pc:var(--purple)">
+        <span class="ptitle">┤ compare ├</span><span class="pkey">c on any friend · esc back</span>
+
+        <div class="heads">
+          <div class="head">
+            <div class="stagewrap"><span id="pet-me"></span></div>
+            <div class="nm">Zeruko</div>
+            <div class="who">@will · axolotl · adult · est. 2014</div>
+            <div class="chip" style="color:var(--me); border-color:#dea58466">■ rust #dea584</div>
+          </div>
+          <div class="vs"><span class="x">vs</span>friends<br>since 2021</div>
+          <div class="head">
+            <div class="stagewrap"><span id="pet-them"></span></div>
+            <div class="nm">Pabo</div>
+            <div class="who">@mona · cat · adult · est. 2019</div>
+            <div class="chip" style="color:var(--them); border-color:#f1e05a66">■ javascript #f1e05a</div>
+          </div>
+        </div>
+        <div class="groundline"></div>
+
+        <div class="rows" id="rows"></div>
+
+        <div class="under">
+          <div class="sub">
+            <h4>last 14 days · events/day</h4>
+            <pre class="actmini" id="actmini"></pre>
+            <div class="legend">
+              <span><span class="sw" style="background:var(--me)"></span>you · baseline 6.2</span>
+              <span><span class="sw" style="background:var(--them)"></span>@mona · baseline 4.8</span>
+            </div>
+          </div>
+          <div class="sub">
+            <h4>medal shelves · shared medals in green</h4>
+            <div class="medrow"><span class="side">you</span>
+              <span class="medal">PS ×3</span><span class="medal">YOLO</span><span class="medal">QD</span><span class="medal shared">GB</span></div>
+            <div class="medrow"><span class="side">@mona</span>
+              <span class="medal">PS ×2</span><span class="medal shared">GB</span><span class="medal">SS</span></div>
+            <div class="medrow" style="color:var(--faint); font-size:11px; margin-top:4px">
+              Galaxy Brain in common · @mona has Starstruck — star bait?</div>
+          </div>
+        </div>
+
+        <div class="insights">
+          <h4>what the pets noticed</h4>
+          <div class="ins"><span class="d" style="background:var(--them)"></span>
+            <span><b>Pabo is better rested</b> — @mona kept two full weekends this month; Zeruko's last 6h+ gap was yesterday.</span></div>
+          <div class="ins"><span class="d" style="background:var(--me)"></span>
+            <span><b>Zeruko eats better</b> — 3 merges to Pabo's 1 this week (#482 was 4h ago).</span></div>
+          <div class="ins"><span class="d" style="background:var(--them)"></span>
+            <span><b>Pabo is fitter</b> — @mona shipped something 13 of the last 14 days; small and steady.</span></div>
+        </div>
+      </section>
+
+      <footer class="ftr">
+        <span class="kbtn"><b>↹</b> next friend</span>
+        <span class="kbtn"><b>↵</b> visit @mona</span>
+        <span class="kbtn"><b>s</b> snapshot to stdout</span>
+        <span class="kbtn"><b>esc</b> back</span>
+        <span class="sp"></span>
+        <span style="color:var(--faint)">friendly rivalry, not a leaderboard — no total is computed, on purpose</span>
+      </footer>
+    </div>
+  </div>
+
+  <p class="cap"><b>Design decisions:</b> bars are colored by <i>owner</i>, not by value — in a
+  comparison, identity is the channel that matters, and the printed number carries magnitude.
+  The ◂/▸ marker (green, with the value bolded) is the only "score". Curiosity and wisdom sit
+  below the dashed rule as the slow stats; health is structurally absent rather than shown
+  empty. <kbd>s</kbd> prints this exact frame as plain text (<span style="color:#39c5cf">gh pet
+  compare mona --snapshot</span>) for pasting into a README or a group chat — the shareable
+  moment is the whole point of this screen.</p>
+</div>
+
+<script>
+const SPRITES = {"axolotl_f1": ["........................", "....PP............PP....", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", "..PPPDOOOOOOOOOOOODPPP..", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", "..PPPDOROOOKKOOORODPPP..", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD......", ".....DOOWWWWWWOOOD.DD...", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "axolotl_f2": ["........................", "...PP..............PP...", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", ".PPPPDOOOOOOOOOOOODPPPP.", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".PPPPDOROOOKKOOORODPPPP.", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD.DD...", ".....DOOWWWWWWOOODDOD...", ".....DOOWWWWWWOOOD......", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "cat_f1": [".......D........D.......", "......DOD......DOD......", ".....DOPOD....DOPOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOROOOKKOOOROD.....", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD..DD...", "......DOOOOOOOOOOD.DOD..", ".....DOOWWWWWWOOOD.DOD..", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "cat_f2": [".......D........D.......", "......DOD......DOD......", ".....DOPOD....DOPOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".....DOROOOKKOOOROD.....", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOOOOOOOOOOD..DD..", ".....DOOWWWWWWOOOD..DOD.", ".....DOOWWWWWWOOODDDOD..", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"]};
+function hexToHsl(hex){let[r,g,b]=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h,s,l=(mx+mn)/2;
+  if(mx===mn){h=s=0}else{const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);
+  h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4);h/=6}return[h*360,s*100,l*100]}
+const hsl=(h,s,l)=>`hsl(${h.toFixed(0)},${s.toFixed(0)}%,${Math.max(6,Math.min(95,l)).toFixed(0)}%)`;
+function derive(hex){const[h,s,l0]=hexToHsl(hex);const l=Math.min(Math.max(l0,30),80);
+  return{O:hsl(h,s,l),D:hsl(h,s,l*.52),W:hsl(h,Math.min(s,55),l+(100-l)*.65),
+  S:hsl(h,s,l*.83),K:'#22272e',P:'#f778ba',R:hsl(h,Math.min(s,50),l+(100-l)*.35)}}
+function renderPix(el,map,pal,px){
+  el.classList.add('pix');
+  el.style.width=map[0].length*px+'px'; el.style.height=map.length*px+'px';
+  el.innerHTML='';
+  const fr=document.createDocumentFragment();
+  map.forEach((row,y)=>{[...row].forEach((ch,x)=>{
+    const c=pal[ch]; if(!c||ch==='.')return;
+    const d=document.createElement('i');
+    d.style.cssText=`position:absolute;left:${x*px}px;top:${y*px}px;width:${px}px;height:${px}px;background:${c}`;
+    fr.appendChild(d)});});
+  el.appendChild(fr);
+}
+const flip = g => g.map(r=>[...r].reverse().join(''));
+const blink = g => g.map(r=>r.replace(/WKW/g,'WDW').replace(/KW/g,'DD')
+                           .replace(/WK/g,'DD').replace(/DKD/g,'DDD'));
+
+/* pets face each other: yours as-is (faces right-ish), theirs flipped */
+const meEl=document.getElementById('pet-me'), themEl=document.getElementById('pet-them');
+meEl.style.filter='drop-shadow(0 0 14px #dea58444)';
+themEl.style.filter='drop-shadow(0 0 14px #f1e05a44)';
+const mePal=derive('#dea584'), themPal=derive('#f1e05a');
+const meF=[SPRITES.axolotl_f1, SPRITES.axolotl_f2];
+const themF=[flip(SPRITES.cat_f1), flip(SPRITES.cat_f2)];
+let t=0;
+function draw(){
+  renderPix(meEl,  t%9===0 ? blink(meF[0])  : meF[t%2],  mePal, 6);
+  renderPix(themEl,t%9===4 ? blink(themF[0]): themF[t%2], themPal, 6);
+}
+draw(); setInterval(()=>{t++;draw()},600);
+
+/* mirrored stat rows */
+const STATS=[
+ ['happy',82,88],['hunger',71,58],['energy',34,76],['fitness',55,88],
+ ['social',60,51],['clean',85,79],null,
+ ['curiosity',25,62],['wisdom',74,70],
+];
+const rows=document.getElementById('rows');
+rows.innerHTML =
+ `<div class="crow head-row"><div>you</div><div></div><div></div><div></div><div></div><div></div><div>@mona</div></div>` +
+ STATS.map(s=>{
+  if(!s) return '<div class="hsep"></div>';
+  const [n,a,b]=s, aw=a>=b, bw=b>a;
+  return `<div class="crow">
+    <span class="val l" style="color:${aw?'var(--ink)':'var(--muted)'}">${a}</span>
+    <span class="win">${aw?'◂':''}</span>
+    <span class="bar l ${aw?'':'dim'}"><i style="width:${a}%"></i></span>
+    <span class="lb">${n}</span>
+    <span class="bar r ${bw?'':'dim'}"><i style="width:${b}%"></i></span>
+    <span class="win">${bw?'▸':''}</span>
+    <span class="val r" style="color:${bw?'var(--ink)':'var(--muted)'}">${b}</span>
+  </div>`}).join('')
+ + `<div class="crow" style="padding-top:6px"><span></span><span></span>
+    <span style="text-align:right; color:var(--faint); font-size:10.5px">health — private on both sides, by design</span>
+    <span></span><span></span><span></span><span></span></div>`;
+
+/* dual 14d activity mini-chart */
+const ME =[3,7,9,2,0,6,8,10,4,0,0,9,12,11];
+const THEM=[5,4,6,5,3,0,0,6,5,7,4,6,0,5];
+const E8=' ▁▂▃▄▅▆▇█';
+let out='';
+for(let r=0;r<3;r++){
+  let line='';
+  for(let d=0;d<14;d++){
+    [[ME[d],'#dea584'],[THEM[d],'#f1e05a']].forEach(([v,c])=>{
+      const h=v/12*24, base=(2-r)*8, f=Math.max(0,Math.min(8,Math.round(h-base)));
+      line+=`<span style="color:${f?c:'#1b212a'}">${E8[f]||'█'}</span>`;
+    });
+    line+=' ';
+  }
+  out+=line+String.fromCharCode(10);
+}
+document.getElementById('actmini').innerHTML=out;
+</script>
+</body>
+</html>

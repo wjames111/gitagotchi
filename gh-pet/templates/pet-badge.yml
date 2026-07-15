@@ -1,0 +1,53 @@
+# gitagotchi badge — keeps pet.svg in your profile README current.
+#
+# Drop this file into your profile repo (<login>/<login>) at
+# .github/workflows/pet-badge.yml, then embed the pet:
+#
+#     ![my gitagotchi](pet.svg)
+#
+# Why cron AND push: there is no cross-repo "this user did something"
+# trigger, and the pet changes even when GitHub doesn't — hunger decays,
+# sleep and hibernation are functions of the wall clock. The cron is the
+# heartbeat; the push trigger gives instant feedback on this repo; the
+# commit-if-changed guard keeps no-op runs invisible (the badge SVG is
+# deterministic for a given pet state, so "changed" means the pet changed).
+
+name: pet badge
+on:
+  schedule:
+    - cron: "17 */6 * * *"   # every 6h — the wall-clock heartbeat
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # once gh-pet is published as a gh extension, this is the whole install;
+      # until then, replace <you> or vendor the gh-pet directory in this repo
+      - name: install gh-pet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install <you>/gh-pet
+
+      - name: render the pet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh pet badge ${{ github.repository_owner }} > pet.svg
+
+      - name: commit if the pet changed
+        run: |
+          git add pet.svg
+          if ! git diff --cached --quiet; then
+            git config user.name "gitagotchi"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "pet: state changed"
+            git push
+          fi
