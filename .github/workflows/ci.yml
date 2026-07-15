@@ -1,0 +1,25 @@
+# gitagotchi CI — the pet is a pure function of recorded API data, so the
+# whole suite runs offline from generated fixtures (plan.md §9.1). The
+# macOS leg exists because bash portability is a named risk (§12): macOS
+# ships bash 3.2 and gh-pet hops to brew bash ≥ 4.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install bash 4+ and jq (macOS ships bash 3.2)
+        if: runner.os == 'macOS'
+        run: brew install bash jq
+      - name: run the offline suite
+        run: gh-pet/tests/run.sh
