@@ -1,6 +1,8 @@
 # gitagotchi — lib/pixel.sh
-# Half-block pixel renderer (ux-spec §9.2): each cell prints ▀ with
-# fg = top pixel, bg = bottom pixel — 24×18 px = 24 cols × 9 rows, plain ANSI.
+# Block pixel renderer (ux-spec §9.2), plain ANSI, at PIX_SCALE cells per px:
+#   scale 1 — each cell prints ▀, fg = top pixel / bg = bottom pixel
+#             (24×18 px = 24 cols × 9 rows)
+#   scale 2 — each pixel prints ██, 2 cols × 1 row  (24×18 px = 48 cols × 18 rows)
 # Render ladder: truecolor → ANSI-256 nearest → Tier-A ASCII sprites (§6).
 #
 # Sprite source: sprites-pixel.txt palette-indexed grids
@@ -14,6 +16,63 @@
 # then states fall back to idle frames + stage overlays (placeholders).
 
 PIX_MODE=""            # T = truecolor, 256 = ANSI-256, "" = unavailable
+
+# PIX_SCALE — cells per source pixel (ux-spec §9.2).
+#   1 = half-block: one ▀ per column, fg = top px / bg = bottom px.
+#       A 24×18 grid → 24 cols × 9 rows; a 48×36 grid → 48 cols × 18 rows.
+#   2 = full-block: one ██ per pixel, 2 cols wide × 1 whole row tall.
+#       A 24×18 grid → 48 cols × 18 rows.
+# Both keep pixels square: a cell is ~twice as tall as it is wide, so a
+# half-block subpixel (1 col × ½ cell) and a scale-2 block (2 cols × 1 cell)
+# are each 1:1. Doubling only one axis would stretch them, so scale 2 costs
+# twice the rows as well as twice the columns.
+#
+# Scale 1 is the real renderer; detail belongs in the GRID, not the block
+# size. Note the two 48×18-cell footprints above: 24×18 art at scale 2 and
+# 48×36 art at scale 1 occupy identical cells, but the second carries 4× the
+# pixels. So scale 2 buys size, never detail — its use is GITAGOTCHI_SCALE=2
+# as a preview, to feel a footprint against the layout before the art for it
+# exists. Everything downstream sizes itself off the grid (see pix_pet_rows),
+# so higher-resolution art needs no scale change at all.
+PIX_SCALE=${GITAGOTCHI_SCALE:-1}
+case $PIX_SCALE in 1|2) ;; *) PIX_SCALE=1 ;; esac
+
+# PIX_PACK — how many grid pixels go in one terminal cell (ux-spec §9.2).
+#   half = 2 px/cell (1 wide × 2 tall), drawn with ▀: fg = top px, bg = bottom.
+#   quad = 4 px/cell (2 wide × 2 tall), drawn with the quadrant glyphs.
+#
+# Same canvas, twice the pixels: a cell is ~twice as tall as it is wide, so a
+# half-block px is square and a quadrant px is HALF-WIDTH (0.5 × 1). Quadrant
+# art is therefore *anamorphic* — drawn twice as wide as it reads — and 48×18
+# renders to 24 cols × 9 rows: the original footprint, 864 px against 432.
+#
+# All 16 two-by-two states exist (space ▘▝▖▗▀▄▌▐▚▞▛▜▙▟█, Unicode 1.1, in every
+# monospace font), so EVERY arrangement of a 2×2 block is expressible exactly —
+# provided the block uses at most two colours, which is the cell's hard limit.
+# Keep each 2×2 block to two colours when drawing and the render is lossless;
+# where a block needs three or more, pack_cell falls back to the closest pair.
+#
+# auto (the default) decides per species at load — see PIXPACK in pix_db_load.
+# half/quad force it globally, for A/B against the same art.
+PIX_PACK=${GITAGOTCHI_PACK:-auto}
+case $PIX_PACK in half|quad|auto) ;; *) PIX_PACK=auto ;; esac
+
+# Anamorphic art belongs to the SPRITE FILE's pets — it is not something to
+# infer from any grid that happens to be wide. The scene props are registered
+# in code at their true aspect, and `cloud` (10×4) trips a dimension-only guess
+# into packing itself to 5 columns. So the pack is resolved once per species at
+# load, and everything the file doesn't own — props, the egg, the ball — stays
+# half-block. pix_render reads PIXPACK directly; a helper would fork per frame.
+declare -A PIXPACK
+
+# Quadrant mask table: glyph + which subpixels it paints in the FOREGROUND.
+# Subpixel k = row*2 + col (k0=upper-left, k1=upper-right, k2=lower-left,
+# k3=lower-right), so bit k of the mask. All 16 states, no gaps.
+PACK_MASK=(
+  " :0"  "▘:1"  "▝:2"  "▀:3"  "▖:4"  "▌:5"  "▞:6"  "▛:7"
+  "▗:8"  "▚:9"  "▐:10" "▜:11" "▄:12" "▙:13" "▟:14" "█:15"
+)
+
 declare -a PIX_SPECIES=()
 declare -A PIXF PIXPAL PIXREF PIXTRIM PIX_HASFRAME PIXNAME
 
@@ -105,6 +164,16 @@ pix_db_load() {
       [[ -n $nid && -n $nname ]] && PIXNAME[$nid]=$nname
     done < "$namef"
   fi
+  # Resolve each pet's packing from its own grid, ONCE. A pet reads ~4:3, so a
+  # grid wider than 2:1 can only be anamorphic (48×18 → 24 cols × 9 rows, four
+  # pixels a cell). 24×18 art stays half-block, so an old sprite file still
+  # renders correctly against this same code.
+  local s
+  for s in "${PIX_SPECIES[@]}"; do
+    local -a g0; local IFS=$'\n'; g0=(${PIXF[$s/idle_1]:-}); unset IFS
+    (( ${#g0[@]} > 0 )) || continue
+    (( ${#g0[0]} > 2 * ${#g0[@]} )) && PIXPACK[$s]=quad
+  done
   pix_egg_register
   (( ${#PIX_SPECIES[@]} > 0 ))
 }
@@ -326,17 +395,43 @@ DOOOSD
 # vertical trim: drop fully-transparent pixel-row PAIRS of THIS frame, so pets
 # stand on the ground (per-frame: eat frames carry bowl pixels at the bottom,
 # hibernate cocoons are short — bottom-aligning per frame keeps feet grounded).
+# pix_pet_rows: terminal rows a species' sprite will occupy, WITHOUT rendering
+# it — the pet panel has to be sized before the pet is composed (lib/dense.sh).
+# Untrimmed grid height, so it's a stable ceiling rather than a per-frame value:
+# 18 grid rows → 9 at scale 1, which is the constant this replaced. 48×36 art
+# reports 18 and the panel follows it with no further change.
+# Sets PET_ROWS instead of echoing, and memoises: draw_dense needs this on
+# EVERY frame, so a command substitution here would fork on the 4 fps hot path
+# (§8.2) and re-split the grid each time. The sprite grid never changes at
+# runtime, so one measurement per species is all there is.
+PET_ROWS=9
+declare -A _PETROWS
+pix_pet_rows() { # species_id → PET_ROWS
+  local id=$1
+  if [[ -n ${_PETROWS[$id]:-} ]]; then PET_ROWS=${_PETROWS[$id]}; return; fi
+  local n=18 sc=$PIX_SCALE
+  [[ -z $PIX_MODE ]] && sc=1        # ASCII tier draws its own sprites, not the grid
+  if [[ -n ${PIXF[$id/idle_1]:-} ]]; then
+    local -a g; local IFS=$'\n'; g=(${PIXF[$id/idle_1]}); unset IFS
+    (( ${#g[@]} > 0 )) && n=${#g[@]}
+  fi
+  # quad art is anamorphic but still 2 grid rows per cell — same row count
+  PET_ROWS=$(( n * sc / 2 ))
+  _PETROWS[$id]=$PET_ROWS
+}
+
 pix_trim() { # id frame → "r0 r1" (inclusive, aligned to half-block pairs)
   local key="$1/$2"
   [[ -n ${PIXTRIM[$key]:-} ]] && { printf '%s' "${PIXTRIM[$key]}"; return; }
-  local r lo=99 hi=0
+  local r lo=-1 hi=0
   local -a g; local IFS=$'\n'; g=(${PIXF[$key]:-}); unset IFS
   for r in "${!g[@]}"; do
     [[ ${g[r]//./} != "" ]] || continue
-    (( r < lo )) && lo=$r
+    (( lo < 0 || r < lo )) && lo=$r
     (( r > hi )) && hi=$r
   done
-  (( lo == 99 )) && { lo=0; hi=17; }
+  # a wholly transparent frame trims to the whole grid, whatever its height
+  (( lo < 0 )) && { lo=0; hi=$(( ${#g[@]} > 0 ? ${#g[@]} - 1 : 17 )); }
   (( lo % 2 )) && lo=$((lo-1))
   (( hi % 2 == 0 )) && hi=$((hi+1))
   PIXTRIM[$key]="$lo $hi"
@@ -1183,6 +1278,99 @@ declare -a PIX_GURNEY=(
   ".......KK..........KK......."
 )
 
+# pack_cell — 4 letters of a 2×2 block (reading order, '.' = transparent) →
+# PK_OUT, the one coloured cell that draws them. Two colours per block is the
+# normal case and renders EXACTLY: the mask is just "which pixels are letter A".
+# Memoised on palette+pattern — sprite blocks repeat heavily (most are solid
+# body), so a frame costs a handful of searches, not one per cell.
+declare -A PKCACHE
+PK_OUT=""
+pack_cell() { # 4-letter pattern
+  local pat=$1 ck="$PC_KEY/$pat"
+  if [[ -n ${PKCACHE[$ck]:-} ]]; then PK_OUT=${PKCACHE[$ck]}; return; fi
+
+  # Tally the opaque letters, remembering first appearance. Bash iterates an
+  # associative array in UNSPECIFIED order, so breaking a tie by that order
+  # would draw the same block differently from run to run — this pet is a pure
+  # function of its data (§P1) and snapshots must be reproducible.
+  local -a L=(); local -A cnt=(); local k ch nop=0
+  for ((k=0; k<4; k++)); do
+    ch=${pat:k:1}; [[ $ch == "." ]] && continue
+    [[ -n ${cnt[$ch]:-} ]] || L+=("$ch")
+    cnt[$ch]=$(( ${cnt[$ch]:-0} + 1 )); nop=$(( nop + 1 ))
+  done
+  if (( nop == 0 )); then PK_OUT=" "; PKCACHE[$ck]=$PK_OUT; return; fi
+
+  # the two most common letters; ties go to whichever appears first
+  local b1="" n1=0 b2="" n2=0
+  for ch in "${L[@]}"; do
+    if (( cnt[$ch] > n1 )); then b2=$b1 n2=$n1 b1=$ch n1=${cnt[$ch]}
+    elif (( cnt[$ch] > n2 )); then b2=$ch n2=${cnt[$ch]}; fi
+  done
+
+  local fgl=$b1 bgl="" m=0
+  if (( nop < 4 )); then
+    # The block is part transparent. Those pixels must show the stage behind
+    # the pet, so bg stays UNSET — and that spends the cell's only other slot,
+    # leaving every opaque pixel to take the foreground. A second colour has
+    # nowhere to live: handing the odd pixel to bg instead would punch a hole
+    # clean through the sprite. The half-block path hits the identical limit
+    # and answers it the same way — ▀/▄, fg only.
+    #
+    # Which colour survives is NOT "the most common". Details and props are
+    # thin by nature — the spear's shaft is one pixel wide — so counting pixels
+    # erases them into the body fill they lean against. A detail losing to body
+    # deletes the feature; body losing to a detail only fattens it by a pixel.
+    # Same convention as pix_render_half's downsample, extended to the prop
+    # letters pix_palette owns (spear steel/shaft, thermometer, beard).
+    local p
+    for p in K P R X V Y Z T H B; do
+      [[ -n ${cnt[$p]:-} ]] && { fgl=$p; break; }
+    done
+    for ((k=0; k<4; k++)); do
+      [[ ${pat:k:1} == "." ]] || m=$(( m | (1 << k) ))
+    done
+  else
+    # Fully opaque: two colours are EXACT (the mask is just "which pixels are
+    # fg"); three or more snap to the nearer of the top two.
+    bgl=$b2
+    for ((k=0; k<4; k++)); do
+      ch=${pat:k:1}
+      if [[ $ch == "$fgl" ]]; then m=$(( m | (1 << k) ))
+      elif [[ $ch == "$bgl" ]]; then :
+      else pk_nearer "$ch" "$fgl" "$bgl" && m=$(( m | (1 << k) )); fi
+    done
+  fi
+
+  local gly=" " ent
+  for ent in "${PACK_MASK[@]}"; do [[ ${ent##*:} == "$m" ]] && { gly=${ent%%:*}; break; }; done
+  PK_OUT="$(pk_sgr "${PC[$fgl]:-}" "${bgl:+${PC[$bgl]}}")${gly}${RS}"
+  PKCACHE[$ck]=$PK_OUT
+}
+
+# pk_nearer ch a b — 0 (true) if ch is closer to a than to b in rgb
+pk_nearer() {
+  [[ -z $3 ]] && return 0
+  local c1=${PC[$1]:-0;0;0} c2=${PC[$2]:-0;0;0} c3=${PC[$3]:-0;0;0}
+  local -a p q r
+  IFS=';' read -ra p <<<"$c1"; IFS=';' read -ra q <<<"$c2"; IFS=';' read -ra r <<<"$c3"
+  local da=$(( (p[0]-q[0])**2 + (p[1]-q[1])**2 + (p[2]-q[2])**2 ))
+  local db=$(( (p[0]-r[0])**2 + (p[1]-r[1])**2 + (p[2]-r[2])**2 ))
+  (( da <= db ))
+}
+
+pk_sgr() { # fg_rgb bg_rgb → the SGR prefix, in the current colour mode
+  local f=$1 b=$2 out=""
+  if [[ $PIX_MODE == T ]]; then
+    [[ -n $f ]] && out+=$'\e[38;2;'"$f"'m'
+    [[ -n $b ]] && out+=$'\e[48;2;'"$b"'m'
+  else
+    [[ -n $f ]] && out+=$'\e[38;5;'"$(pc_256 "$f")"'m'
+    [[ -n $b ]] && out+=$'\e[48;5;'"$(pc_256 "$b")"'m'
+  fi
+  printf '%s' "$out"
+}
+
 pix_render() {
   local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0} reading=${16:-} wave=${17:-0}
   # ASCII-era frame names → pixel two-frame names
@@ -1202,8 +1390,13 @@ pix_render() {
   [[ $frame == hibernate_* ]] && beard=0
   # dilation and brows are invisible behind elder spectacle rims
   [[ $specs == 1 ]] && bigeye=0 brows=0
-  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$wave/$PC_KEY/$PIX_MODE"
-  if [[ -n ${PIXCACHE[$ck]:-} ]]; then
+  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$wave/$PC_KEY/$PIX_MODE/$PIX_SCALE/$PIX_PACK"
+  # A cache hit returns before PIXGRID is filled, so the badge backend must
+  # never take one: the key has no PIX_CAPTURE in it, and a badge rendered
+  # after a matching stage frame would silently capture an EMPTY grid. It only
+  # works today because `badge` runs in its own process with a cold cache —
+  # skip the cache while capturing rather than leave that standing.
+  if [[ -n ${PIXCACHE[$ck]:-} && ${PIX_CAPTURE:-0} != 1 ]]; then
     local IFS=$'\n'; PIXOUT=(${PIXCACHE[$ck]}); unset IFS
     PIXOUT_W=${PIXCACHE_W[$ck]} PIXOUT_H=${PIXCACHE_H[$ck]}
     return
@@ -1313,6 +1506,45 @@ pix_render() {
   fi
   local w=${#g[0]} y x out line tc bc t b
   PIXOUT=()
+  local pack=${PIXPACK[$id]:-half}
+  [[ $PIX_PACK != auto ]] && pack=$PIX_PACK
+  if [[ $pack == quad ]]; then
+    # blink rewrites eye letters, so apply it to the grid BEFORE blocks are cut
+    if [[ $blink == 1 ]]; then
+      local bi; for ((bi=r0; bi<=r1; bi++)); do g[bi]=$(pix_blink_row "${g[bi]:-}"); done
+    fi
+    # one cell per 2×2 block → 48×18 art lands on 24 cols × 9 rows
+    local pat top bot
+    for ((y=r0; y<=r1; y+=2)); do
+      top=${g[y]:-} bot=${g[y+1]:-}
+      line=""
+      for ((x=0; x<w; x+=2)); do
+        pat="${top:x:2}${bot:x:2}"
+        while (( ${#pat} < 4 )); do pat+="."; done
+        pack_cell "$pat"
+        line+=$PK_OUT
+      done
+      PIXOUT+=("$line")
+    done
+    PIXOUT_W=$(( (w + 1) / 2 )) PIXOUT_H=${#PIXOUT[@]}
+  elif (( PIX_SCALE == 2 )); then
+    # one row per source row, ██ per pixel: no pixel shares a cell, so there
+    # is no fg/bg pairing to do and every letter keeps its exact color.
+    for ((y=r0; y<=r1; y++)); do
+      local row=${g[y]:-}
+      [[ $blink == 1 ]] && row=$(pix_blink_row "$row")
+      line=""
+      for ((x=0; x<w; x++)); do
+        t=${row:x:1}; [[ -z $t ]] && t="."
+        tc=""; [[ $t != "." ]] && tc=${PC[$t]:-}
+        if [[ -z $tc ]]; then line+="  "
+        elif [[ $PIX_MODE == T ]]; then line+=$'\e[38;2;'"$tc"$'m██\e[0m'
+        else line+=$'\e[38;5;'"$(pc_256 "$tc")"$'m██\e[0m'; fi
+      done
+      PIXOUT+=("$line")
+    done
+    PIXOUT_W=$(( w * 2 )) PIXOUT_H=${#PIXOUT[@]}
+  else
   for ((y=r0; y<=r1; y+=2)); do
     local top=${g[y]:-} bot=${g[y+1]:-}
     if [[ $blink == 1 ]]; then top=$(pix_blink_row "$top"); bot=$(pix_blink_row "$bot"); fi
@@ -1337,6 +1569,7 @@ pix_render() {
     PIXOUT+=("$line")
   done
   PIXOUT_W=$w PIXOUT_H=${#PIXOUT[@]}
+  fi
   local joined; printf -v joined '%s\n' "${PIXOUT[@]}"
   PIXCACHE[$ck]=${joined%$'\n'}
   PIXCACHE_W[$ck]=$PIXOUT_W PIXCACHE_H[$ck]=$PIXOUT_H
@@ -1360,17 +1593,23 @@ pix_render_mini() { # species_id linguist_hex → PIXM[0..1] (visible width 6)
   local -a g m=()
   local IFS=$'\n'; g=(${PIXF[$id/idle_1]}); unset IFS
   local trim r0 r1; trim=$(pix_trim "$id" idle_1); r0=${trim%% *}; r1=${trim##* }
-  local h=$(( r1 - r0 + 1 )); (( h < 4 )) && { r0=0; r1=17; h=18; }
-  local ty tx sy y0 y1 k ch row seg
+  local h=$(( r1 - r0 + 1 ))
+  (( h < 4 )) && { r0=0; h=${#g[@]}; (( h < 1 )) && h=18; r1=$(( h - 1 )); }
+  # sample proportionally on BOTH axes: the source block per target pixel is
+  # w/6 × h/4, so a 24-wide grid steps 4 and a 48-wide one steps 8
+  local w=${#g[0]}; (( w < 1 )) && w=24
+  local ty tx sy y0 y1 x0 x1 k ch row seg
   for ((ty=0; ty<4; ty++)); do
     local mrow=""
     y0=$(( r0 + ty * h / 4 )); y1=$(( r0 + (ty + 1) * h / 4 ))
     (( y1 <= y0 )) && y1=$(( y0 + 1 ))
     for ((tx=0; tx<6; tx++)); do
+      x0=$(( tx * w / 6 )); x1=$(( (tx + 1) * w / 6 ))
+      (( x1 <= x0 )) && x1=$(( x0 + 1 ))
       local -A cnt=()
       for ((sy=y0; sy<y1; sy++)); do
         row=${g[sy]:-}
-        seg=${row:tx*4:4}
+        seg=${row:x0:x1-x0}
         for ((k=0; k<${#seg}; k++)); do
           ch=${seg:k:1}
           [[ $ch != "." ]] && cnt[$ch]=$(( ${cnt[$ch]:-0} + 1 ))
@@ -1434,18 +1673,23 @@ pix_render_half() { # species_id linguist_hex [frame] → PIXH[] (visible width 
   local -a g m=()
   local IFS=$'\n'; g=(${PIXF[$id/$frame]}); unset IFS
   local trim r0 r1; trim=$(pix_trim "$id" "$frame"); r0=${trim%% *}; r1=${trim##* }
-  local h=$(( r1 - r0 + 1 )); (( h < 2 )) && { r0=0; r1=17; h=18; }
+  local h=$(( r1 - r0 + 1 ))
+  (( h < 2 )) && { r0=0; h=${#g[@]}; (( h < 1 )) && h=18; r1=$(( h - 1 )); }
   local th=$(( (h + 1) / 2 )); (( th % 2 )) && th=$(( th + 1 ))
-  local ty tx sy y0 y1 k ch row seg
+  # proportional on x too: w/12 source px per target px (2 at 24 wide, 4 at 48)
+  local w=${#g[0]}; (( w < 1 )) && w=24
+  local ty tx sy y0 y1 x0 x1 k ch row seg
   for ((ty=0; ty<th; ty++)); do
     local mrow=""
     y0=$(( r0 + ty * h / th )); y1=$(( r0 + (ty + 1) * h / th ))
     (( y1 <= y0 )) && y1=$(( y0 + 1 ))
     for ((tx=0; tx<12; tx++)); do
+      x0=$(( tx * w / 12 )); x1=$(( (tx + 1) * w / 12 ))
+      (( x1 <= x0 )) && x1=$(( x0 + 1 ))
       local -A cnt=()
       for ((sy=y0; sy<y1; sy++)); do
         row=${g[sy]:-}
-        seg=${row:tx*2:2}
+        seg=${row:x0:x1-x0}
         for ((k=0; k<${#seg}; k++)); do
           ch=${seg:k:1}
           [[ $ch != "." ]] && cnt[$ch]=$(( ${cnt[$ch]:-0} + 1 ))
