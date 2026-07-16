@@ -1,0 +1,49 @@
+# gitagotchi release — cut on any v* tag: gate on the test suite, build the
+# .deb, publish a GitHub Release with the .deb + checksums, and (if a TAP_TOKEN
+# secret is set) bump the Homebrew formula. Ship a version with `git tag v1.2.3
+# && git push --tags`.
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # a PAT with contents:write on homebrew-gitagotchi; unset → the formula
+      # bump step skips (the .deb + release still ship)
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: gate on the offline suite
+        run: gh-pet/tests/run.sh
+
+      - name: version from the tag
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: build the .deb
+        run: packaging/build-deb.sh "${{ steps.v.outputs.version }}" dist
+
+      - name: checksums
+        run: cd dist && sha256sum *.deb | tee SHA256SUMS
+
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*.deb dist/SHA256SUMS
+
+      - name: bump the homebrew formula
+        if: ${{ env.TAP_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ env.TAP_TOKEN }}
+        run: packaging/bump-formula.sh "${{ steps.v.outputs.version }}"
