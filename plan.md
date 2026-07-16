@@ -117,10 +117,21 @@ shows it. Windows are rolling and computed at refresh time — no stored counter
 ### 3.1 Happiness formula
 
 ```
-happiness = 0.20·hunger + 0.15·energy + 0.20·mood + 0.10·fitness
-          + 0.10·cleanliness + 0.05·curiosity + 0.10·social
-          + 0.05·wisdom + 0.05·health
+happiness = 0.28·hunger + 0.18·energy + 0.24·mood + 0.05·fitness
+          + 0.05·cleanliness + 0.05·curiosity + 0.10·social
+          + 0.02·wisdom + 0.03·health
 ```
+
+**Weighted toward what moves.** fitness, cleanliness and health sit pinned at 100 for any
+healthy active account, and wisdom grows on a scale of years. Weight parked on them is dead
+weight twice over — it anchors the composite high *and* it steals authority from the vitals
+the pet visibly acts out. They were 30% of happiness until 2026-07-16; at that split hunger's
+20% was weaker than the 30% of energy+social+curiosity that could offset it, so a pet could
+slide 82→54 hungry over 30 hours while the headline moved a single point (the misery cap
+doesn't bite until <20, so nothing caught it). The inert block is now 15% and those 15 points
+went to hunger/energy/mood. Weights are whole percents summing to 100 and are mirrored in
+`lib/panels.sh` `VX_COMP_W` (the "how it's built" bars) and `lib/screens.sh` `D_SRC` — change
+all three together.
 
 **Misery cap:** if any *survival* stat (hunger, energy, mood, cleanliness, health) < 20,
 happiness is capped at 60 — a starving pet cannot be happy no matter how shiny its medals.

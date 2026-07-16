@@ -203,12 +203,22 @@
    else null end) as $health
 
 # 10 — happiness (plan.md §3.1); health weight redistributes when unknown
+# Weights favour the stats that actually MOVE on a day scale. fitness, clean and
+# health sit pinned at 100 for any healthy active account and wisdom grows on a
+# scale of years, so a fat weight on them is dead weight twice over: it anchors
+# the composite high AND it steals authority from the vitals the pet visibly
+# acts out. At 10/10/5/5 that inert block was 30% of happiness, which left
+# hunger's 20% weaker than the 30% of energy+social+curiosity that could offset
+# it — a pet could slide 82→54 hungry over 30h while the number moved 1 point
+# (the misery cap doesn't bite until <20, so nothing caught it). Halved to 15%
+# and the 15 points moved to hunger/energy/mood. Keep these as whole percents
+# summing to 100: panels.sh VX_COMP_W renders them as integer bars.
 | ({hunger: $hunger, energy: $energy, mood: $mood.v, fitness: $fitness, clean: $clean,
     curiosity: $curiosity, social: $social, wisdom: $wisdom}) as $S9
-| ((0.20*$hunger + 0.15*$energy + 0.20*$mood.v + 0.10*$fitness + 0.10*$clean
-    + 0.05*$curiosity + 0.10*$social + 0.05*$wisdom
-    + (if $health != null then 0.05*$health else 0 end))
-   / (if $health != null then 1.0 else 0.95 end) | round) as $happy_raw
+| ((0.28*$hunger + 0.18*$energy + 0.24*$mood.v + 0.05*$fitness + 0.05*$clean
+    + 0.05*$curiosity + 0.10*$social + 0.02*$wisdom
+    + (if $health != null then 0.03*$health else 0 end))
+   / (if $health != null then 1.0 else 0.97 end) | round) as $happy_raw
 | ($S9 + (if $health != null then {health: $health} else {} end)) as $SM
 # the misery cap listens to SURVIVAL needs only: hunger, energy, mood, clean,
 # health. The slow, aspirational stats (curiosity, wisdom, fitness, social)
