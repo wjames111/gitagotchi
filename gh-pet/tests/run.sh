@@ -85,41 +85,46 @@ SNAPB=$(GITAGOTCHI_PRETEND_WISDOM=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COL
 assert_contains "$SNAPB" "226;208;160" "sage pet wears the beard in its own shade (platinum)"
 SNAPB2=$(GITAGOTCHI_PRETEND_WISDOM=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 if grep -qF "226;208;160" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
-echo "· curiosity props: the pixel book stack sits beside the pet"
+echo "· curiosity (≥75): the pet holds and reads a book (gitagotchi-reading.html)"
 SNAPBK=$(GITAGOTCHI_PRETEND_VIG=books COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPBK" "74;118;184" "book stack: the blue base book renders"
-assert_contains "$SNAPBK" "154;111;196" "book pile: the wide purple bottom book renders (varied colors)"
+assert_contains "$SNAPBK" "47;95;176"   "reading: the held book's blue cover renders"
+assert_contains "$SNAPBK" "244;240;226" "reading: the book's bright page renders"
 SNAPBK2=$(COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-if grep -qF "74;118;184" <<<"$SNAPBK2"; then fail "no vignette, no books"; else ok "no vignette, no books"; fi
-echo "· review duty: the pixel spear stands at the pet's side"
+if grep -qF "47;95;176" <<<"$SNAPBK2"; then fail "no vignette, no book"; else ok "no vignette, no book"; fi
+echo "· review duty: the guardian-pose spear stands beside the pet"
 # fixture OUTBOUND7=4 ≥ 3 → the spear shows by default; staged 0 hides it
-assert_contains "$SNAPBK2" "200;204;212" "spear: silver head renders on review duty"
+assert_contains "$SNAPBK2" "205;214;224" "spear: steel blade renders on review duty"
+assert_contains "$SNAPBK2" "138;90;43"   "spear: the wooden shaft renders"
 SNAPSP=$(GITAGOTCHI_PRETEND_OUTBOUND=0 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-if grep -qF "200;204;212" <<<"$SNAPSP"; then fail "off duty, no spear"; else ok "off duty, no spear"; fi
+if grep -qF "205;214;224" <<<"$SNAPSP"; then fail "off duty, no spear"; else ok "off duty, no spear"; fi
 echo "· day/night + seasons (plan.md §11): the wall clock dresses the stage"
 # night: 100×34 leaves two rows of open sky above a 9-row pet
 SNAPNT=$(GITAGOTCHI_PRETEND_HOUR=23 GITAGOTCHI_SNAP_COLS=100 GITAGOTCHI_SNAP_LINES=34 \
   COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-# the ornaments are PIXEL sprites now (pix_scene_register) — fingerprints
-# are their palette rgb values, not glyphs
-assert_contains "$SNAPNT" "242;234;208" "night: the pixel crescent rises (undimmed cream)"
-assert_contains "$SNAPNT" "195;205;232" "night: a 4-point pixel sparkle in a clear lane"
-assert_contains "$SNAPNT" "150;160;185" "night: star motes fill the open sky"
-assert_contains "$SNAPNT" "205;214;235" "night: a bright mote among them"
+# the ornaments are PIXEL sprites now (pix_scene_register, a 1:1 port of
+# gitagotchi-seasons.html) — fingerprints are their palette rgb values. The
+# whole night sky (moon + four-point stars + mote field) is one cream-blue
+# HTML PAL.M #dce6f0 = 220;230;240
+assert_contains "$SNAPNT" "220;230;240" "night: the crescent, stars and motes share the cream-blue sky"
+assert_contains "$SNAPNT" "255;215;95" "summer night: fireflies blink over the lawn"
 assert_contains "$SNAPNT" "30;39;58"  "night: the ground dims to moonlight"
-# the moonlit palette reaches the pixel letters: spear silver 200;204;212
-# cools to 140;153;195 (moonlit = ×0.70 ×0.75 ×0.92)
-assert_contains "$SNAPNT" "140;153;195" "night: the spear cools under moonlight"
-if grep -qF "200;204;212" <<<"$SNAPNT"; then fail "night: no daylight silver after dark"; else ok "night: no daylight silver after dark"; fi
+# the moonlit palette reaches the pixel letters: spear steel 205;214;224
+# cools to 143;160;206 (moonlit = ×0.70 ×0.75 ×0.92)
+assert_contains "$SNAPNT" "143;160;206" "night: the spear steel cools under moonlight"
+if grep -qF "205;214;224" <<<"$SNAPNT"; then fail "night: no daylight steel after dark"; else ok "night: no daylight steel after dark"; fi
 SNAPWN=$(GITAGOTCHI_PRETEND_MONTH=1 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPWN" "188;215;242" "winter: pixel snow falls on the stage"
+assert_contains "$SNAPWN" "230;237;243" "winter: pixel snow (HTML S) sifts down the stage"
+assert_contains "$SNAPWN" "34;39;46"   "winter: the snowman's coal eyes by the wall"
 assert_contains "$SNAPWN" "96;108;128" "winter: frost settles on the ground"
 SNAPSG=$(GITAGOTCHI_PRETEND_MONTH=4 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPSG" "247;146;200" "spring: the pink pixel blossom roots on the floor"
+assert_contains "$SNAPSG" "247;120;186" "spring: the pink pixel blossom (HTML F) roots on the floor"
 SNAPAU=$(GITAGOTCHI_PRETEND_MONTH=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPAU" "224;138;62" "autumn: pixel leaves drift in their own orange"
-# the default frame (pinned summer noon) stays mockup-canonical: no scenery
-if grep -q '242;234;208\|188;215;242\|247;146;200\|224;138;62' <<<"$SNAPBK2"; then fail "summer noon: the stage stays mockup-canonical"; else ok "summer noon: the stage stays mockup-canonical"; fi
+assert_contains "$SNAPAU" "240;136;62" "autumn: leaves and piles drift in their own orange (HTML LEAFC)"
+assert_contains "$SNAPAU" "232;118;44" "autumn: a pumpkin (HTML PUMPKIN) sits by the wall"
+# a full port, so summer noon is no longer bare: the sun and grass dress it
+# (deliberately diverging from gitachis.html's canonical dense card)
+assert_contains "$SNAPBK2" "255;215;95" "summer noon: the sun (HTML SUN2) rides the sky"
+assert_contains "$SNAPBK2" "46;160;67"  "summer noon: grass tufts (HTML GRASS) root the lawn"
 echo "· expanded panels (gitagotchi-panels.html): s / g / f / e full views"
 SNAP7=$("$ROOT/gh-pet" --fixtures fixtures --snapshot --dense --panel vitals 2>&1)
 assert_contains "$SNAP7" "vitals · all 10"       "vitals: panel title"
@@ -233,6 +238,24 @@ if [[ "$SVG1" == "$SVG2" ]]; then ok "badge: deterministic across a cache wipe";
 SVGH=$(GITAGOTCHI_PRETEND_QUIET=35 "$ROOT/gh-pet" badge --fixtures fixtures 2>&1)
 assert_contains "$SVGH" "hibernating" "badge: hibernation named on the card"
 if grep -qF 'id="blink"' <<<"$SVGH"; then fail "badge: cocoons don't blink"; else ok "badge: cocoons don't blink"; fi
+
+echo "· state legality table (§8.4): the single source of truth for which"
+echo "  visual layers may coexist — no sleeping-reader, no sick ball-batter,"
+echo "  no egg throwing a ball (render.sh gate_expr / gate_props)"
+GATES=$(
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/render.sh" 2>/dev/null
+  for f in idle_1 stretch sleep_1 sick_2 hibernate_1; do gate_expr "$f"; echo "expr $f $GATE_EXPR $GATE_BODY $GATE_BEARD"; done
+  for s in idle eat sleep sick wake hib hatch; do gate_props "$s" adult; echo "props $s $GATE_PROPS $GATE_HOST"; done
+  gate_props idle egg; echo "props eggidle $GATE_PROPS $GATE_HOST"
+)
+assert_contains "$GATES" "expr idle_1 1 1 1"      "gate_expr: idle keeps expression, silhouette, beard"
+assert_contains "$GATES" "expr sleep_1 0 1 1"     "gate_expr: sleep sets down spear/book/expression (beard survives)"
+assert_contains "$GATES" "expr stretch 0 1 1"     "gate_expr: the wake stretch drops expression — no mid-yawn wag/spear"
+assert_contains "$GATES" "expr hibernate_1 0 0 0" "gate_expr: the cocoon hides expression, silhouette AND beard"
+assert_contains "$GATES" "props idle 1 1"         "gate_props: idle welcomes floor props and guests"
+assert_contains "$GATES" "props sleep 0 1"        "gate_props: no floor props while asleep (sleep yields to guests upstream)"
+assert_contains "$GATES" "props sick 0 0"         "gate_props: a sick pet takes no props and no guests"
+assert_contains "$GATES" "props eggidle 0 0"      "gate_props: an egg holds the whole stage — no ball, no party"
 
 echo
 echo "════ passed $PASS · failed $FAIL ════"

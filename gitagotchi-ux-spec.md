@@ -24,6 +24,7 @@ interaction in v1. All mockups are drawn at or near the 60×20 minimum terminal 
 7. Pet voice — copy guidelines
 8. Open design questions
 9. Dense mode — the btop-style theme (pixel-art pets, panels, meters, palette)
+10. Scenes — day/night & the four seasons
 
 ---
 
@@ -351,16 +352,8 @@ a 5-point hysteresis so the scene doesn't flap:
 | cleanliness < 40 | flies `.·°` orbit the pet, 2-frame swap |
 | social < 30 | a small window `┌─┐` appears top-left; pet sits facing it |
 | curiosity < 30 | no toys on the floor (their *absence* is the cue); at ≥ 60 a ball `●` appears and the pet bats it between two columns |
-| curiosity ≥ 75 | the ball graduates to a pixel book stack (red on gold on blue, page edges out) at stage left — a fixed floor prop that steps aside while the pet wanders over it |
 | fitness < 35 | body line widens — the round belly frame variant |
 | fitness ≥ 80 | stretch animation joins the idle rotation (~every 30 s) |
-| hunger < 20 | the silhouette narrows — one pixel shaved off each flank (starving) |
-| hunger ≥ 90 | the silhouette rounds out by one pixel per side (well fed) |
-| energy < 25 | bags under the eyes — the frazzle (§6.5) |
-| energy ≥ 85 | pupils dilate — eyes go big, black, and too awake to blink |
-| curiosity ≥ 75 | scrunched brows — a three-pixel bar over each eye, nose-shifted, always one clear pixel row above the eye |
-| social ≥ 70 | the tail wags — detached appendages (tail, arm nubs) swish one pixel outward on the odd half-second beat; attached rows stay planted so the tip bends |
-| outbound reviews ≥ 3 (7d) | review duty — the pet HOLDS a pixel spear (silver head, gold tassel, wooden shaft): blitted into the sprite at the right paw, butt on the ground, so it wanders, wags and mirrors with the pet; sleep/sick/hibernate set it down |
 
 ### 5.4 Stat detail panel (`s`)
 
@@ -855,23 +848,77 @@ Props (bowl, thermometer, sparkles) overlay only onto empty cells, so they alway
 what the bash renderer computes at draw time — the state frames in `sprites-pixel.txt`
 are the precomputed proof, not 550 hand-drawn originals.
 
-**Dense compare view** (`gitagotchi-compare.html`): one purple `┤ compare ├` panel.
-The pets face each other across a `vs` cell (theirs is mirrored horizontally), each
-over its name, `@login · species · stage · est. year` and a linguist-color chip. The
-vs cell reads `vs · <relationship> · since YYYY`: the relationship status sums both
-sides' bond ledgers (`COMMS_RAW` — comment/review events tallied per counterpart,
-preferring the issue/PR author so org-repo collaboration counts) and buckets them:
-0 distant orbits · 1–2 acquaintances · 3–7 pen pals · 8–19 buddies · 20+ partners in
-crime. Below
-a dotted groundline, mirrored stat rows: value · `◂`/`▸` · bar · label · bar — each bar
-colored by *whose* it is (your linguist color vs theirs), the losing side dimmed, the
-green marker + bold ink value the only "score". Curiosity and wisdom sit under a dashed
-rule as the slow stats; health is structurally absent ("private on both sides, by
-design"). Under-sections: a dual 14-day events/day mini-chart with per-owner baselines,
-and medal shelves where shared medals turn green. A "what the pets noticed" card closes
-with three derived observations (rest, merges, ship-days). Footer: `↹` next friend,
-`↵` visit, `s` snapshot to stdout (prints this frame as plain text into scrollback),
-`esc` back — and the stance, literally: no total is computed, on purpose.
+**The motion library (procedural, universal).** Beyond state frames, ten named animations
+are defined as pure grid-space transforms — shift, flip, shear (lean around the base),
+squash/stretch (nearest-neighbor vertical resample anchored at the feet) — so every one
+runs on every species with zero added art. Reference implementation + interactive demo:
+`gitagotchi-animation-lab.html`.
+
+| Animation | Recipe (over `idle_1`/`idle_2`) | Tick | State hook |
+|---|---|---|---|
+| breathe | squash .94→.90→.94 | 340ms | ambient, always on |
+| wiggle | shear −1 · rest · shear +1 · rest | 200ms | mood ≥ 80 |
+| waddle | shear±1 with 1px sidestep | 260ms | wander walk |
+| bounce | up1 · up2+stretch1.07 · up1 · rest · squash .88 | 140ms | notification arrives |
+| shiver | x±1 jitter + sweat drop | 110ms | health dropping, pre-sick |
+| look-around | f1 · f2 · flip(f1) · flip(f2) | 800ms | curiosity high |
+| jump-for-joy | double bounce, higher + sparkles | 150ms | celebrate upgrade |
+| melt | eyes closed, squash .93→.86→.80→back | 480ms | sick idle |
+| sleepy-sway | eyes closed, slow shear±1 + zzz | 600ms | sleep |
+| love | plain idle + floating pixel hearts | 400ms | happiness > 80 |
+
+Particles (hearts, sparkles, zzz, sweat) are 3×3-ish pixel stamps on a separate layer
+above the pet, drifting 1 cell per tick — matching §2.3's float-up rules.
+
+**Elder beard & wisdom glasses (procedural, universal).** The §6.7 elder additions in
+pixel form — one rule, fifty chins (demo: `gitagotchi-elders.html`). The renderer finds
+the face: eye row = first row with a `KW`/`WK` pair; mouth = first `KK` run *below* the
+eye row (below-guard ignores dark caps like the ladybug's); else the beak's `PP` run;
+else eye row + 2 centered between the eyes. From that anchor: mustache pixels at the
+corners, then a beard tapering 8→6→4 wide (grand-elder ≥ 12y adds two forked rows).
+Beard color is **fixed age-gray** (`#d8dee4`/`#9aa4ad`), never the linguist color, and
+auto-darkens over light body cells (the penguin-belly rule); it paints *over* the body —
+beards hang. Glasses (wisdom ≥ 60): a gray bridge across the eye row plus one frame
+pixel outside each eye. Both stack with every state and motion, since they re-anchor
+per frame.
+
+---
+
+## 10. Scenes — day/night & the four seasons
+
+*(Demo: `gitagotchi-seasons.html` — interactive time × season matrix.)* The stage
+dresses itself as a **pure function of the wall clock**: season from the local date
+(`--south` flips hemispheres), day/night from the local hour (day = 07–19). Nothing is
+stored, so the scene needs no new persistence — it honors the core invariant.
+
+**Scene grammar — exactly three layers per mode:**
+
+| Layer | Day | Night |
+|---|---|---|
+| Sky | pixel sun top-right + 1–2 clouds drifting 1 cell / 2 ticks | crescent moon + ~10 stars, twinkling in 3 phase groups |
+| Weather | one particle type, falling 1 cell/tick with sway | same; summer swaps to **fireflies** (blinking, hovering) |
+| Ground dressing | 4–5 stamps along the horizon | same, dimmed with the dashboard |
+
+**Per season:** spring — falling petals · pixel flowers on the ground · green accent;
+summer — grass tufts · no day particle · fireflies at night · gold accent; fall —
+swaying leaves in 4 warm hues · leaf piles + a pumpkin · orange accent; winter — snow ·
+snow line over the ground dots + mounds + a snowman with coal eyes · ice accent. The
+panel border and stage background tint take the season hue (backgrounds stay within a
+few steps of `#0d1117` so cozy/dense chrome never clashes).
+
+**Pet crossovers (the two that matter, only two by design):** at night the pet sleeps
+(closed eyes; dashboard dims one step, per §5.3) — and in winter, **snow accumulates on
+the pet's crown**: the renderer finds each column's topmost pixel and caps those within
+one row of the sprite's global top, so every species wears the snow on its own head,
+ears, or gills. Scenes never touch stats — weather is scenery, not gameplay.
+
+**v2 garden hook:** in spring, each ground flower can become one active day from the
+contribution calendar (§ parked in the design doc) — scenery that is still derived,
+never stored.
+
+**Dense compare view**: two side-by-side panels, yours bordered in your linguist color,
+theirs in theirs; pixel pets above 14-cell mirrored meters; `◂` in green marks the
+higher row. Same rules as §5.7 (no winner line, health excluded).
 
 **Dense state treatments**: sleeping dims the whole screen one step; sick shifts every
 panel border to red and renders the pet pale; hibernation renders the cocoon and all
@@ -911,5 +958,3 @@ at btop density the border color is the fastest thing the eye catches.
 Validated against the dark surface: all accents ≥ 3:1 contrast; the amber↔green adjacency
 in the meter gradient is CVD-tight, which is why fill *length* and the printed value are
 the primary encodings and color is redundant.
-
-

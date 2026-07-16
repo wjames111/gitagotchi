@@ -166,88 +166,124 @@ pix_egg_register() {
 .........DDDDDD.........
 ........................'
   PIX_HASFRAME[egg/crack_2]=1
-  pix_books_register
   pix_ball_register
   pix_scene_register
 }
 
 # ── scene props (day/night + seasons, plan.md §11) ──────────────────────────
-# Ambient pixel weather: a crescent moon and sparkle stars for the night sky;
-# snowflakes, flowers and leaves for the seasons. Fixed palettes with ref ==
-# their own hex, so pix_palette passes every color through exactly — like the
-# books and the ball, never hue-shifted by the pet's language. Letters B/X/Y/Z
-# stay off-limits (pix_palette overwrites them: beard + spear).
+# A faithful 1:1 port of gitagotchi-seasons.html: the same chunky sky, weather
+# and ground-dressing sprites the mockup draws, transcribed onto the half-block
+# pixel grid. Three layers per mode — sky (sun + drifting clouds by day; a
+# crescent moon + four-point stars by night), weather (petals · fireflies ·
+# leaves · snow), and ground dressing (flowers · grass · leaf piles + pumpkin ·
+# snow mounds + snowman). Fixed palettes with ref == their own hex, so
+# pix_palette passes every color through exactly — like the books and the ball,
+# never hue-shifted by the pet's language. Letters B/X/Y/Z stay off-limits
+# (pix_palette overwrites them: beard + spear) — so the sun wears U, not the
+# mockup's Y.
 pix_scene_register() {
-  PIXPAL[moon]="M=#f2ead0 m=#c8bd9c"
-  PIXREF[moon]="#f2ead0"
-  PIXF[moon/idle_1]='..MMm..
-.MMMm..
-MMMm...
-MMm....
-MMm....
-MMMm...
-.MMMm..
-..MMm..'
+  # night sky — crescent moon + four-point stars, one cream-blue (HTML PAL.M)
+  PIXPAL[moon]="M=#dce6f0"
+  PIXREF[moon]="#dce6f0"
+  PIXF[moon/idle_1]='..MMM.
+MMMM..
+MMM...
+MMM...
+MMMM..
+..MMM.'
   PIX_HASFRAME[moon/idle_1]=1
-  PIXPAL[spark]="W=#f4f7ff w=#c3cde8 s=#7d8bb4"
-  PIXREF[spark]="#f4f7ff"
-  PIXF[spark/idle_1]='..s..
-..w..
-swWws
-..w..
-..s..'
-  PIX_HASFRAME[spark/idle_1]=1
-  PIXPAL[flake]="I=#bcd7f2 W=#ffffff"
-  PIXREF[flake]="#bcd7f2"
-  PIXF[flake/idle_1]='I.I.I
-.III.
-IIWII
-.III.
-I.I.I'
-  PIX_HASFRAME[flake/idle_1]=1
-  # one blossom shape, three petal colors — gold, white, pink (each frame
-  # picks its petal letter; stem shared)
-  PIXPAL[flower]="N=#f792c8 E=#e8c94f U=#eef0f5 C=#f7d54a G=#4d8a4f g=#365f38"
-  PIXREF[flower]="#f792c8"
-  PIXF[flower/pink]='.NNN.
-NNCNN
-.NNN.
-..G..
-.gG..
-..G..'
+  PIXPAL[star]="M=#dce6f0"
+  PIXREF[star]="#dce6f0"
+  PIXF[star/idle_1]='.M.
+MMM
+.M.
+...'
+  PIX_HASFRAME[star/idle_1]=1
+  # day sky — the gold sun (HTML SUN2) + a slate drifting cloud (HTML CLOUD)
+  PIXPAL[sun]="U=#ffd75f"
+  PIXREF[sun]="#ffd75f"
+  PIXF[sun/idle_1]='U...U...U
+.UUUUUUU.
+UUUUUUUUU
+UUUUUUUUU
+.UUUUUUU.
+U...U...U'
+  PIX_HASFRAME[sun/idle_1]=1
+  PIXPAL[cloud]="C=#39424e"
+  PIXREF[cloud]="#39424e"
+  PIXF[cloud/idle_1]='..CCCC....
+.CCCCCCCC.
+CCCCCCCCCC
+..........'
+  PIX_HASFRAME[cloud/idle_1]=1
+  # spring blossoms — the HTML FLOWER's two petal frames (pink · white), a
+  # green stem beneath (letter P is white here: pix_palette honors K/P as their
+  # own palette color, only B/X/Y/Z are stolen)
+  PIXPAL[flower]="F=#f778ba P=#ffffff G=#2ea043"
+  PIXREF[flower]="#f778ba"
+  PIXF[flower/pink]='FF
+FF
+G.
+..'
   PIX_HASFRAME[flower/pink]=1
-  PIXF[flower/gold]='.EEE.
-EECEE
-.EEE.
-..G..
-.gG..
-..G..'
-  PIX_HASFRAME[flower/gold]=1
-  PIXF[flower/white]='.UUU.
-UUCUU
-.UUU.
-..G..
-.gG..
-..G..'
+  PIXF[flower/white]='PP
+PP
+.G
+..'
   PIX_HASFRAME[flower/white]=1
-  # one leaf silhouette, three autumn shades — orange, rust, gold
-  PIXPAL[leaf]="A=#e08a3e a=#a85f28 R=#c25b30 r=#8a3f20 D=#d9a83c d=#9c7526"
-  PIXREF[leaf]="#e08a3e"
-  PIXF[leaf/a]='..AA
-.AAa
-AAa.
-aa..'
-  PIX_HASFRAME[leaf/a]=1
-  PIXF[leaf/b]='..RR
-.RRr
-RRr.
-rr..'
-  PIX_HASFRAME[leaf/b]=1
-  PIXF[leaf/c]='..DD
-.DDd
-DDd.
-dd..'
-  PIX_HASFRAME[leaf/c]=1
+  # summer grass tuft (HTML GRASS)
+  PIXPAL[grass]="G=#2ea043"
+  PIXREF[grass]="#2ea043"
+  PIXF[grass/idle_1]='G.G
+GGG'
+  PIX_HASFRAME[grass/idle_1]=1
+  # autumn — a leaf pile (HTML PILE) in each of the four LEAFC shades, and the
+  # single falling leaf chunk (HTML weather 'leaf') in the same shades
+  PIXPAL[pile]="L=#f0883e M=#db6d28 N=#c9510c Q=#d29922"
+  PIXREF[pile]="#f0883e"
+  PIXF[pile/a]='.LL.
+LLLL'
+  PIXF[pile/b]='.MM.
+MMMM'
+  PIXF[pile/c]='.NN.
+NNNN'
+  PIXF[pile/d]='.QQ.
+QQQQ'
+  PIX_HASFRAME[pile/a]=1; PIX_HASFRAME[pile/b]=1
+  PIX_HASFRAME[pile/c]=1; PIX_HASFRAME[pile/d]=1
+  PIXPAL[leaf]="A=#f0883e R=#db6d28 C=#c9510c D=#d29922"
+  PIXREF[leaf]="#f0883e"
+  PIXF[leaf/a]='AA
+A.'
+  PIXF[leaf/b]='RR
+R.'
+  PIXF[leaf/c]='CC
+C.'
+  PIXF[leaf/d]='DD
+D.'
+  PIX_HASFRAME[leaf/a]=1; PIX_HASFRAME[leaf/b]=1
+  PIX_HASFRAME[leaf/c]=1; PIX_HASFRAME[leaf/d]=1
+  # autumn pumpkin (HTML PUMPKIN) — orange body, green stub
+  PIXPAL[pumpkin]="O=#e8762c g=#2ea043"
+  PIXREF[pumpkin]="#e8762c"
+  PIXF[pumpkin/idle_1]='.g.
+OOO
+OOO
+...'
+  PIX_HASFRAME[pumpkin/idle_1]=1
+  # winter — snow mounds (HTML MOUND) and the snowman (HTML SNOWMAN, K eyes)
+  PIXPAL[mound]="S=#e6edf3"
+  PIXREF[mound]="#e6edf3"
+  PIXF[mound/idle_1]='.SS.
+SSSS'
+  PIX_HASFRAME[mound/idle_1]=1
+  PIXPAL[snowman]="S=#e6edf3 K=#22272e"
+  PIXREF[snowman]="#e6edf3"
+  PIXF[snowman/idle_1]='..SS..
+.SKKS.
+.SSSS.
+SSSSSS'
+  PIX_HASFRAME[snowman/idle_1]=1
 }
 
 # ── the fetch ball (PR-merged reward) ────────────────────────────────────────
@@ -264,70 +300,20 @@ DOOOSD
   PIX_HASFRAME[ball/idle_1]=1
 }
 
-# ── the book pile (curiosity ≥ 75 vignette) ─────────────────────────────────
-# A floor prop, not a species: five books in a ragged pile at the stage wall,
-# every one a different color and size — narrow red on top, wide purple on
-# the bottom, page edges in W. Each book is one half-block row: bright cover
-# on the top pixel, its darker shade underneath, so the pile reads shaded.
-# Fixed palette (ref == hex → pix_palette passes it through exactly). NOTE:
-# the letter B is reserved — pix_palette overwrites PC[B] with the beard.
-pix_books_register() {
-  PIXPAL[books]="R=#c65b4e r=#8f4038 P=#d2a047 p=#96702e S=#4a76b8 s=#33517e G=#5ea15f g=#3f6f40 V=#9a6fc4 v=#6b4a8c W=#e8e0cd"
-  PIXREF[books]="#c65b4e"
-  PIXF[books/idle_1]='............
-............
-...RRRRRW...
-...rrrrrr...
-..PPPPPPPW..
-..pppppppp..
-....SSSSSW..
-....ssssss..
-..GGGGGGGGW.
-..ggggggggg.
-.VVVVVVVVVW.
-.vvvvvvvvvv.'
-  PIX_HASFRAME[books/idle_1]=1
-  # the narrow pile (same five books, squeezed): stages under ~55 cells wide
-  # can't fit the wide pile beside a wandering pet — the corner would hide
-  # it more than show it (learned the hard way; see the ≤105-col note)
-  PIXF[books/narrow]='........
-........
-..RRRW..
-..rrrr..
-.PPPPPW.
-.pppppp.
-...SSSW.
-...ssss.
-..GGGGW.
-..ggggg.
-VVVVVVVW
-vvvvvvvv'
-  PIX_HASFRAME[books/narrow]=1
-}
+# ── the reading pose (curiosity ≥ 75) ───────────────────────────────────────
+# Was a floor prop (a five-book pile at the wall); now the pet HOLDS an open
+# book and turns the pages (gitagotchi-reading.html). Like the spear it's a
+# transform blitted into the pet's own grid — not a species, not a registered
+# sprite. See pix_apply_reading below; the book's colors are reserved letters
+# J/L/Q in pix_palette (cover / bright page / dim page), paws reuse K.
 
-# ── the review spear (outbound reviews ≥ 3 this week) ───────────────────────
-# HELD, not ambient: pix_render blits this into the pet's own grid at the
-# right paw, bottom-aligned to the feet, so the pet visibly grips it. Letters
-# X/Y/Z are reserved in pix_palette (silver head / wooden shaft / gold
-# tassel) — the spear keeps its own colors inside any pet's palette.
-declare -a PIX_SPEAR=(
-  ".X."
-  "XXX"
-  ".X."
-  ".YZ"
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-  ".Y."
-)
+# ── the guardian spear (outbound reviews ≥ 3 this week) ─────────────────────
+# The guardian pose (gitagotchi-spear.html): a full-height spear planted just
+# outside the body, a leaf-blade head + red binding above, a gripping paw at
+# mid-body, and a determined brow. Procedural from geometry (pix_apply_spear),
+# not a fixed sprite. Reserved letters (pix_palette): X steel head · V steel
+# shoulder · Y shaft light · Z shaft dark · T red binding · H tap dust; the
+# knuckles/paw-outline/brow reuse K, the paw fill is the body's own O.
 
 pix_species_count() { printf '%s' "${#PIX_SPECIES[@]}"; }
 
@@ -437,17 +423,24 @@ pix_palette() { # species_id linguist_hex faint(0/1)
     local br bg bb; IFS=';' read -r br bg bb <<<"$brgb"
     PC[B]="$(( br * 45 / 100 ));$(( bg * 45 / 100 ));$(( bb * 45 / 100 ))"
   else PC[B]=$brgb; fi
-  # reserved letters X/Y/Z: the review spear (silver head / wooden shaft /
-  # gold tassel) — blitted into the grid by pix_render, absent from every
-  # authored sprite, so the injection costs nothing
+  # reserved letters X/V/Y/Z/T/H: the guardian spear — steel head / steel
+  # shoulder / shaft light / shaft dark / red binding / tap dust. Blitted by
+  # pix_apply_spear, absent from every authored sprite, so it costs nothing
   if [[ $faint == 1 ]]; then
-    PC[X]="90;92;95"; PC[Y]="62;40;22"; PC[Z]="94;68;15"
+    PC[X]="92;96;101"; PC[V]="62;66;72"; PC[Y]="62;40;19"; PC[Z]="42;27;12"; PC[T]="111;36;32"; PC[H]="26;28;32"
   else
-    PC[X]="200;204;212"; PC[Y]="138;90;50"; PC[Z]="210;153;34"
+    PC[X]="205;214;224"; PC[V]="138;147;160"; PC[Y]="138;90;43"; PC[Z]="95;61;28"; PC[T]="248;81;73"; PC[H]="58;64;72"
+  fi
+  # reserved letters J/L/Q: the reading book (blue cover / bright page / dim
+  # page) — pix_apply_reading blits it into the grid; paws reuse K
+  if [[ $faint == 1 ]]; then
+    PC[J]="21;43;79"; PC[L]="110;108;102"; PC[Q]="90;88;78"
+  else
+    PC[J]="47;95;176"; PC[L]="244;240;226"; PC[Q]="201;195;173"
   fi
   if [[ ${PIX_NIGHT:-0} == 1 ]]; then
     local xl
-    for xl in X Y Z; do moonlit "${PC[$xl]}"; PC[$xl]=$MLIT; done
+    for xl in X V Y Z T H J L Q; do moonlit "${PC[$xl]}"; PC[$xl]=$MLIT; done
   fi
 }
 
@@ -685,48 +678,123 @@ pix_apply_mood() { # nameref grid, mood (1 smile · -1 frown; 0 keeps straight)
   done
 }
 
-pix_apply_beard() { # nameref grid, length 1..3 — wisdom's silver beard,
-  local -n G=$1     # tapering from the chin: stubble → trimmed → full sage
-  local blen=$2
+pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
+  local -n G=$1     # AROUND the mouth (gitagotchi-elders_1.html): a mustache
+  local blen=$2     # flanks the anchor, a tapered beard hangs below it
+  # the anchor is the FACE, found like the mockup: the mouth (a KK run below
+  # the eyes), else the beak (PP), else two rows under the eyes centered
+  # between them. pix_find_eyes has already set EYE_ROW/E1S…E2E (two-eye
+  # sprites); profile sprites (one eye) fall through to the lone-cluster scan.
   local er=$EYE_ROW s1=$E1S e2=$E2E
-  local start=0
+  local eyeC
   if (( er >= 0 )); then
-    start=$(( er + 3 ))
+    eyeC=$(( (s1 + e2) / 2 ))
   else
-    # profile sprites carry one eye, so pix_find_eyes came up empty — find
-    # the lone KW/WK cluster and hang a small goatee off the chin instead
+    # profile sprite (one eye) — find the lone KW/WK cluster
     local ri row i
     for ri in "${!G[@]}"; do
       row=${G[ri]}
       for ((i=0; i<${#row}-1; i++)); do
         if [[ ${row:i:2} == KW || ${row:i:2} == WK ]]; then
-          er=$ri s1=$i e2=$((i + 1))
-          while (( s1 > 0 )) && [[ ${row:s1-1:1} == [KW] ]]; do s1=$((s1-1)); done
-          while (( e2 < ${#row}-1 )) && [[ ${row:e2+1:1} == [KW] ]]; do e2=$((e2+1)); done
-          s1=$(( s1 - 2 )); e2=$(( e2 + 2 )); start=$(( er + 2 ))
+          er=$ri
+          local ls=$i le=$((i + 1))
+          while (( ls > 0 )) && [[ ${row:ls-1:1} == [KW] ]]; do ls=$((ls-1)); done
+          while (( le < ${#row}-1 )) && [[ ${row:le+1:1} == [KW] ]]; do le=$((le+1)); done
+          eyeC=$(( (ls + le) / 2 ))
           break 2
         fi
       done
     done
+    # still nothing — the eyes are bare K's (e.g. the crab's stalks); the
+    # mockup's last resort is the first row carrying any K, centered on them
+    if (( er < 0 )); then
+      local kc kn
+      for ri in "${!G[@]}"; do
+        row=${G[ri]} kc=0 kn=0
+        for ((i=0; i<${#row}; i++)); do
+          [[ ${row:i:1} == K ]] && { kc=$((kc + i)); kn=$((kn + 1)); }
+        done
+        (( kn > 0 )) && { er=$ri; eyeC=$(( kc / kn )); break; }
+      done
+    fi
     (( er < 0 )) && return
   fi
+
+  # anchor row + center: mouth (KK+, anywhere below the eyes), then beak
+  # (PP+, within three rows), then the chin fallback
+  local arow=-1 ac=$eyeC r i row j e
+  for ((r=er+1; r<${#G[@]}; r++)); do
+    row=${G[r]}
+    for ((i=0; i<${#row}-1; i++)); do
+      if [[ ${row:i:2} == KK ]]; then
+        e=$i
+        while (( e < ${#row} )) && [[ ${row:e:1} == K ]]; do e=$((e+1)); done
+        arow=$r; ac=$(( i + (e - i) / 2 )); break 2
+      fi
+    done
+  done
+  if (( arow < 0 )); then
+    for ((r=er+1; r<er+4 && r<${#G[@]}; r++)); do
+      row=${G[r]}
+      for ((i=0; i<${#row}-1; i++)); do
+        if [[ ${row:i:2} == PP ]]; then
+          e=$i
+          while (( e < ${#row} )) && [[ ${row:e:1} == P ]]; do e=$((e+1)); done
+          arow=$r; ac=$(( i + (e - i) / 2 )); break 2
+        fi
+      done
+    done
+  fi
+  (( arow < 0 )) && { arow=$(( er + 2 )); ac=$eyeC; }
+
   # never paint past the last body row: pix_trim was measured on the
   # authored grid, so anything hung below it gets sliced off at render
   local last=$(( ${#G[@]} - 1 ))
   while (( last > 0 )) && [[ ${G[last]} != *[!.]* ]]; do last=$((last-1)); done
-  local br bi brow bs be x
-  for ((br=0; br<blen; br++)); do
-    bi=$(( start + br ))
-    (( bi > last )) && break
-    bs=$(( s1 + 1 + br )); be=$(( e2 - 1 - br ))
-    (( bs < 0 )) && bs=0
-    (( bs > be )) && break
-    brow=${G[bi]}
-    for ((x=bs; x<=be && x<${#brow}; x++)); do
+
+  # mustache: two pixels either side of the mouth, at the anchor row — the
+  # mouth cells between them stay clear, so the beard rings the mouth
+  local brow x
+  brow=${G[arow]}
+  for x in $((ac - 3)) $((ac - 2)) $((ac + 1)) $((ac + 2)); do
+    (( x < 0 || x >= ${#brow} )) && continue
+    brow="${brow:0:x}B${brow:x+1}"
+  done
+  G[arow]=$brow
+
+  # the beard hangs below the anchor, centered on it, tapering by tier;
+  # widths mirror the mockup's 8→6→4 (grand-elder forks to 2)
+  local -a widths
+  case $blen in
+    1) widths=(6 4) ;;
+    2) widths=(8 6 4) ;;
+    *) widths=(8 6 4) ;;
+  esac
+  local w bs be
+  for ((i=0; i<${#widths[@]}; i++)); do
+    w=${widths[i]}
+    j=$(( arow + 1 + i ))
+    (( j > last )) && break
+    bs=$(( ac - w / 2 )); be=$(( ac + w / 2 - 1 ))
+    brow=${G[j]}
+    for ((x=bs; x<=be; x++)); do
+      (( x < 0 || x >= ${#brow} )) && continue
       brow="${brow:0:x}B${brow:x+1}"
     done
-    G[bi]=$brow
+    G[j]=$brow
   done
+  # grand-elder (tier 3): a forked tip a row further down
+  if (( blen >= 3 )); then
+    j=$(( arow + 1 + ${#widths[@]} ))
+    if (( j <= last )); then
+      brow=${G[j]}
+      for x in $((ac - 2)) $((ac + 1)); do
+        (( x < 0 || x >= ${#brow} )) && continue
+        brow="${brow:0:x}B${brow:x+1}"
+      done
+      G[j]=$brow
+    fi
+  fi
 }
 
 pix_apply_specs() { # nameref to grid array
@@ -864,6 +932,156 @@ pix_apply_wag() { # nameref grid, phase(0/1)
   done
 }
 
+# the reading pose (curiosity ≥ 75, gitagotchi-reading.html): the pet holds an
+# open book and turns the pages. Procedural like every other idle — the eyes go
+# downcast, then a 10×4 book (reserved letters J cover / L bright page / Q dim
+# page, K paws) is stamped IN FRONT of the lower body, centered under the face.
+# pageframe 0 = book open & still · 1 = the right leaf lifts · 2 = it flips left.
+pix_apply_reading() { # nameref grid, pageframe (0/1/2)
+  local -n RG=$1
+  local pf=$2
+  local H=${#RG[@]} ri
+  # geometry BEFORE the eyes go downcast, so the eye row is still findable
+  local eyeRow=-1
+  for ((ri=0; ri<H; ri++)); do
+    [[ ${RG[ri]} == *KW* || ${RG[ri]} == *WK* ]] && { eyeRow=$ri; break; }
+  done
+  (( eyeRow < 0 )) && eyeRow=6
+  # lowest body row + the body's center below the eyes (where the book rests)
+  local lowRow=0 cLeft=99 cRight=0 r c first last
+  for ((r=0; r<H; r++)); do
+    [[ ${RG[r]} == *[!.]* ]] || continue
+    lowRow=$r
+    (( r > eyeRow )) || continue
+    first=-1 last=-1
+    for ((c=0; c<${#RG[r]}; c++)); do
+      [[ ${RG[r]:c:1} != . ]] && { (( first < 0 )) && first=$c; last=$c; }
+    done
+    (( first >= 0 && first < cLeft )) && cLeft=$first
+    (( last > cRight )) && cRight=$last
+  done
+  local cx=12
+  (( cLeft <= cRight )) && cx=$(( (cLeft + cRight) / 2 ))
+  # downcast eyes: the pupil drops toward the page (KW→DK, WK→KD)
+  for ((ri=0; ri<H; ri++)); do
+    local rr=${RG[ri]}
+    rr=${rr//KW/DK}; rr=${rr//WK/KD}
+    RG[ri]=$rr
+  done
+  # paint one cell in front of the body (the book overwrites what it covers)
+  _bkput() { # row col letter
+    local rw=$1 cc=$2 lt=$3
+    (( rw < 0 || rw >= H || cc < 0 )) && return
+    local s=${RG[rw]}
+    (( cc >= ${#s} )) && return
+    RG[rw]="${s:0:cc}${lt}${s:cc+1}"
+  }
+  # the book: 10 wide, 3 page rows over 1 cover row, centered under the face,
+  # resting near the feet (but never off the bottom of the grid)
+  local bw=10 mid=5 top left row x gx col
+  top=$(( eyeRow + 3 )); (( lowRow - 3 > top )) && top=$(( lowRow - 3 ))
+  (( top > H - 4 )) && top=$(( H - 4 ))
+  left=$(( cx - 5 ))
+  # the book's bottom row — pix_render widens its trim window to it, so a
+  # short-bodied reader (the caterpillar) doesn't get the book sliced off
+  READ_BOTTOM=$(( top + 3 ))
+  for ((x=0; x<bw; x++)); do _bkput $((top + 3)) $((left + x)) J; done   # cover
+  for ((row=0; row<3; row++)); do
+    for ((x=0; x<bw; x++)); do
+      gx=$(( left + x ))
+      if (( x == mid )); then col=J                       # spine
+      elif (( x < mid )); then                            # left leaf (static)
+        col=L; (( row == 0 )) && col=Q
+      else                                                # right leaf (animates)
+        if [[ $pf == 1 ]] && (( x > mid + 1 && row < 2 )); then continue; fi   # lifting
+        if [[ $pf == 2 ]] && (( x > mid && row < 2 )); then col=Q              # flipping
+        else col=L; (( row == 0 )) && col=Q; fi
+      fi
+      _bkput $((top + row)) "$gx" "$col"
+    done
+  done
+  # the turning leaf arcs across on the page-turn frames
+  if [[ $pf == 1 ]]; then for r in 0 1 2; do _bkput $((top + r - 1)) $((cx + 2)) L; done; fi
+  if [[ $pf == 2 ]]; then for r in 0 1 2; do _bkput $((top + r - 1)) $((cx - 1)) L; done; fi
+  # little paws on the cover corners, holding it
+  _bkput $((top + 2)) $((left - 1)) K
+  _bkput $((top + 2)) $((left + bw)) K
+}
+
+# the guardian pose (outbound reviews ≥ 3, gitagotchi-spear.html): a full-
+# height spear planted just outside the body on the given side, a leaf-blade
+# steel head + red binding above the head, a gripping paw at mid-body, and a
+# determined brow over the eyes. Procedural from geometry, so a tall penguin
+# grips high and a low blob grips low. On the guard-tap frame the whole spear
+# drops 1px and dust puffs at its base. Exports SPEAR_TOP/SPEAR_BOT so
+# pix_render can widen its trim window to the blade tip and the butt.
+SPEAR_TOP=0 SPEAR_BOT=0
+pix_apply_spear() { # nameref grid, side (1 right / -1 left), tap (0/1)
+  local -n SG=$1
+  local side=$2 tap=$3
+  local H=${#SG[@]} W=${#SG[0]} ri
+  # eye row + eye columns (for the brow), then the body's bounding box
+  local eyeRow=-1
+  local -a eyeCols=()
+  for ((ri=0; ri<H; ri++)); do
+    local rr=${SG[ri]} i=0
+    while (( i < ${#rr} - 1 )); do
+      if [[ ${rr:i:2} == KW || ${rr:i:2} == WK ]]; then
+        eyeCols+=("$i"); (( eyeRow < 0 )) && eyeRow=$ri; i=$((i + 2))
+      else i=$((i + 1)); fi
+    done
+    (( eyeRow >= 0 )) && break
+  done
+  (( eyeRow < 0 )) && eyeRow=6
+  local top=99 bot=0 left=99 right=0 c
+  for ((ri=0; ri<H; ri++)); do
+    [[ ${SG[ri]} == *[!.]* ]] || continue
+    (( ri < top )) && top=$ri; (( ri > bot )) && bot=$ri
+    local rr=${SG[ri]}
+    for ((c=0; c<${#rr}; c++)); do
+      [[ ${rr:c:1} != . ]] && { (( c < left )) && left=$c; (( c > right )) && right=$c; }
+    done
+  done
+  local dy=0; (( tap )) && dy=1
+  local sx groundY tipY
+  if (( side > 0 )); then sx=$(( right + 2 )); (( sx > W - 2 )) && sx=$(( W - 2 ))
+  else sx=$(( left - 2 )); (( sx < 1 )) && sx=1; fi
+  groundY=$(( bot + 1 ))
+  tipY=$(( top - 3 )); (( tipY < 0 )) && tipY=0
+  _spput() { local y=$1 x=$2 lt=$3
+    (( y < 0 || y >= H || x < 0 || x >= W )) && return
+    local s=${SG[y]}; SG[y]="${s:0:x}${lt}${s:x+1}"; }
+  # shaft below the head — a striped wooden pole down to the feet
+  local y wc
+  for ((y=tipY + 4; y<=groundY; y++)); do
+    wc=Z; (( y % 2 )) && wc=Y
+    _spput $((y + dy)) "$sx" "$wc"
+  done
+  # leaf-blade head: point, upper blade, shoulders, neck, then the red binding
+  _spput $((tipY + dy)) "$sx" X
+  _spput $((tipY + 1 + dy)) "$sx" X
+  _spput $((tipY + 2 + dy)) $((sx - 1)) V; _spput $((tipY + 2 + dy)) "$sx" X; _spput $((tipY + 2 + dy)) $((sx + 1)) V
+  _spput $((tipY + 3 + dy)) "$sx" V
+  _spput $((tipY + 4 + dy)) "$sx" T
+  # the gripping paw reaches from mid-body out to the shaft
+  local gripY=$(( (eyeRow + bot) / 2 + 1 )) inner=$(( sx - side ))
+  _spput $((gripY + dy)) "$sx" K            # knuckles on the shaft
+  _spput $((gripY + dy)) "$inner" K         # paw outline
+  _spput $((gripY + dy)) $(( inner - side )) O   # paw fill = body color
+  # the determined brow: a dark bar over each eye
+  local bc
+  for bc in "${eyeCols[@]}"; do
+    _spput $((eyeRow - 1)) "$bc" K
+    _spput $((eyeRow - 1)) $((bc + 1)) K
+  done
+  # dust puffs when the butt taps the ground
+  if (( tap )); then
+    _spput $((groundY + 2)) $((sx - 1)) H
+    _spput $((groundY + 2)) $((sx + 1)) H
+  fi
+  SPEAR_TOP=$(( tipY + dy )); SPEAR_BOT=$(( groundY + 2 ))
+}
+
 # pix_render id frame blink → PIXOUT[] colored lines, PIXOUT_W cols, PIXOUT_H rows
 # (uses current PC palette; cache key includes it)
 declare -A PIXCACHE PIXCACHE_W PIXCACHE_H
@@ -902,7 +1120,7 @@ declare -a PIX_GURNEY=(
 )
 
 pix_render() {
-  local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0}
+  local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0} reading=${16:-}
   # ASCII-era frame names → pixel two-frame names
   case $frame in
     sick) frame=sick_1 ;; celebrate) frame=celebrate_1 ;;
@@ -912,13 +1130,13 @@ pix_render() {
   # the cocoon hides the body — hibernation shape stays canonical
   [[ $frame == hibernate_* ]] && body=0
   # sick, sleeping and cocooned faces carry their own expression — and none
-  # of them stands guard: the spear waits by the door
-  [[ $frame == sick_* || $frame == sleep_* || $frame == hibernate_* ]] && mood=0 bigeye=0 brows=0 wag=0 spear=0
+  # of them stands guard: the spear waits by the door, the book stays shut
+  [[ $frame == sick_* || $frame == sleep_* || $frame == hibernate_* ]] && { mood=0 bigeye=0 brows=0 wag=0 spear=0 reading=""; }
   # the cocoon hides the chin too (the beard survives sleep — it's earned)
   [[ $frame == hibernate_* ]] && beard=0
   # dilation and brows are invisible behind elder spectacle rims
   [[ $specs == 1 ]] && bigeye=0 brows=0
-  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$PC_KEY/$PIX_MODE"
+  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$PC_KEY/$PIX_MODE"
   if [[ -n ${PIXCACHE[$ck]:-} ]]; then
     local IFS=$'\n'; PIXOUT=(${PIXCACHE[$ck]}); unset IFS
     PIXOUT_W=${PIXCACHE_W[$ck]} PIXOUT_H=${PIXCACHE_H[$ck]}
@@ -935,24 +1153,14 @@ pix_render() {
   (( mood != 0 )) && pix_apply_mood g "$mood"
   (( sixp == 1 )) && pix_apply_abs g
   (( beard != 0 )) && pix_apply_beard g "$beard"
+  [[ -n $reading ]] && pix_apply_reading g "$reading"
   (( wag == 1 )) && pix_apply_wag g 1
-  if (( spear == 1 )); then
-    # review duty: the pike blits into the pet's own grid at the right paw,
-    # bottom-aligned to the trimmed feet so its butt rests on the ground.
-    # The shaft lands just past the body's edge at shoulder height (rows
-    # 4-12, measured AFTER the skinny/fat transform, ignoring tails), so
-    # wide and narrow species alike grip it instead of wearing it. After
-    # wag (a planted spear doesn't swish), before flip (a mirrored friend
-    # grips it with the other paw).
-    local strim sr1 srr srow2 rmax=15
-    strim=$(pix_trim "$id" "$frame"); sr1=${strim##* }
-    for ((srr=4; srr<=12; srr++)); do
-      srow2=${g[srr]:-}
-      while [[ $srow2 == *. ]]; do srow2=${srow2%.}; done
-      (( ${#srow2} - 1 > rmax )) && rmax=$(( ${#srow2} - 1 ))
-    done
-    (( rmax > 21 )) && rmax=21
-    pix_blit g PIX_SPEAR $(( sr1 - ${#PIX_SPEAR[@]} + 1 )) "$rmax"
+  if (( spear != 0 )); then
+    # the guardian pose: planted beside the body, gripped mid-shaft, brow set
+    # (pix_apply_spear, from geometry). Placed on the right; the flip below
+    # mirrors it for a facing friend. spear==2 is the guard-tap beat. After
+    # wag (a planted spear doesn't swish), before flip.
+    pix_apply_spear g 1 "$(( spear == 2 ? 1 : 0 ))"
   fi
   if (( flip )); then
     # mirror horizontally (compare view: the friend faces your pet) —
@@ -965,12 +1173,17 @@ pix_render() {
     done
   fi
   local trim r0 r1; trim=$(pix_trim "$id" "$frame"); r0=${trim%% *}; r1=${trim##* }
-  if (( spear == 1 )); then
-    # the pike can rise above a short pet's head — widen the render window
-    # so the spearhead isn't trimmed away (r1 is odd, so this stays even)
-    local sp0=$(( r1 - ${#PIX_SPEAR[@]} + 1 ))
-    (( sp0 < 0 )) && sp0=0
-    (( sp0 < r0 )) && r0=$sp0
+  if (( spear != 0 )); then
+    # the blade rises above the head and the butt + dust drop below the feet —
+    # widen the window both ways (kept even top / odd bottom for half-blocks)
+    (( SPEAR_TOP < r0 )) && { r0=$SPEAR_TOP; (( r0 % 2 )) && r0=$(( r0 - 1 )); (( r0 < 0 )) && r0=0; }
+    (( SPEAR_BOT > r1 )) && { r1=$SPEAR_BOT; (( r1 % 2 == 0 )) && r1=$(( r1 + 1 )); (( r1 >= ${#g[@]} )) && r1=$(( ${#g[@]} - 1 )); }
+  fi
+  if [[ -n $reading ]] && (( ${READ_BOTTOM:-0} > r1 )); then
+    # the held book can hang below a short pet's feet — widen the window down
+    # (kept odd for the half-block pairing) so the cover isn't sliced off
+    r1=$READ_BOTTOM; (( r1 % 2 == 0 )) && r1=$(( r1 + 1 ))
+    (( r1 >= ${#g[@]} )) && r1=$(( ${#g[@]} - 1 ))
   fi
   if [[ ${gurney:-0} != 0 ]]; then
     # rebuild as trimmed body + stretcher so no trimmed-away blank rows gap

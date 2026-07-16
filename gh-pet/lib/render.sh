@@ -201,6 +201,53 @@ frozen_disp() { # assoc_name → echoes 0/1
 # ── pet composition dispatcher (render ladder §9.2) ─────────────────────────
 declare -a PET_LINES
 PET_W=0 PET_H=0
+# ── state legality table (§8.4): one source of truth for which visual layers
+# may coexist. The exclusive axes never overlap by construction — STAGE is
+# derived, ANIM_STATE is a strict priority chain (anim_update). It's the
+# ADDITIVE layers that need masking: the dynamic face expression, the held
+# review spear, the reading pose, the floor-prop vignettes, and the guest
+# cameo. Assembled naively they produce nonsense — a sleeping pet reading, a
+# sick pet batting a ball, an egg hosting a party. The rules live HERE; every
+# consumer asks these two functions instead of re-deriving the policy inline
+# (that drift is exactly how flies once skipped the idle check the ball had).
+#
+# gate_expr <frame> → GATE_EXPR / GATE_BODY / GATE_BEARD (sprite-grid transforms,
+# consumed by pet_compose below). Frame-keyed so it holds for every caller —
+# self, friends, compare, badge — since pet_compose is the sole path that hands
+# transform args to pix_render. EXPR covers the active layers that a resting or
+# ailing pet sets down (mood mouth, dilated/curious/wagging features, the spear,
+# the book); the identity/condition traits (elder specs, tired bags, six-pack)
+# are earned and ride through. The cocoon additionally hides the hunger
+# silhouette and the beard; the wake stretch drops expression but keeps them.
+# (pix_render carries a matching frame-keyed backstop for sick/sleep/hibernate.)
+gate_expr() {
+  local frame=$1
+  GATE_EXPR=1 GATE_BODY=1 GATE_BEARD=1
+  case $frame in
+    sick_*|sleep_*) GATE_EXPR=0 ;;
+    hibernate_*)    GATE_EXPR=0 GATE_BODY=0 GATE_BEARD=0 ;;
+    stretch)        GATE_EXPR=0 ;;   # the wake stretch — no wag/spear mid-yawn
+  esac
+}
+
+# gate_props <anim_state> <stage> → GATE_PROPS / GATE_HOST (draw-layer layers,
+# consumed by draw_dense / draw_main). PROPS = the ambient floor vignettes (ball,
+# flies, window, belly): idle only, and never in the egg (the egg owns the whole
+# stage). HOST = the guest cameo: welcome while the pet is up and about, denied
+# when it's indisposed (sick / mid-wake) or dormant (hibernating / hatching /
+# still an egg). Sleep yields to guests upstream in anim_update, so a hosting
+# pet is never in the sleep state to reach this test.
+gate_props() {
+  local st=$1 stage=$2
+  GATE_PROPS=0 GATE_HOST=0
+  [[ $stage == egg ]] && return
+  [[ $st == idle ]] && GATE_PROPS=1
+  case $st in
+    sick|hib|hatch|wake) ;;   # indisposed or dormant — no company
+    *) GATE_HOST=1 ;;
+  esac
+}
+
 pet_compose() { # assoc_name frame blink faint [flip]
   local -n P=$1
   local frame=$2 blink=$3 faint=$4 flip=${5:-0}
@@ -270,9 +317,35 @@ pet_compose() { # assoc_name frame blink faint [flip]
     else
       GURNEY_PREV=0
     fi
-    # review duty (≥3 outbound reviews this week): the pet holds the spear
-    local spearh=0; (( ${P[OUTBOUND7]:-0} >= 3 )) && spearh=1
-    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh"
+    # review duty (≥3 outbound reviews this week): the pet stands guard with
+    # the spear (1). Its own determined brow takes over, so the curiosity brow
+    # steps aside. Every so often the butt taps the ground (2) — a guard-tap
+    # idle; snapshots hold the still pose.
+    local spearh=0
+    if (( ${P[OUTBOUND7]:-0} >= 3 )); then
+      spearh=1; brows=0
+      [[ -n ${TICK:-} ]] && (( (TICK / 4) % 6 == 4 )) && spearh=2
+    fi
+    # the reading pose (curiosity ≥ 75, was the book stack): the caller
+    # (dense.sh, self pet, idle stage) pins it with PET_READING so friend and
+    # compare renders never inherit it. The page cycle is 0,0,0,1,2,0 — mostly
+    # open-and-still, with an occasional page-turn; snapshots freeze on page 0.
+    # A pet buried in a book doesn't wag, dilate, cock its brows or hold a spear.
+    local reading=""
+    if [[ $frame == idle_* && ${PET_READING:-0} == 1 ]]; then
+      local rpg=(0 0 0 1 2 0)
+      reading=0; [[ -n ${TICK:-} ]] && reading=${rpg[$(( (TICK / 6) % 6 ))]}
+      bigeye=0 brows=0 wag=0 spearh=0
+    fi
+    # state legality (§8.4 gate_expr): a sleeping / sick / cocooned / waking pet
+    # sets down its active expression, spear and book; the cocoon also drops the
+    # hunger silhouette and beard. Gurney/specs/tired/six-pack are not expression
+    # and ride through — a sick pet still arrives on the stretcher.
+    gate_expr "$frame"
+    (( GATE_EXPR )) || { moodf=0 bigeye=0 brows=0 wag=0 spearh=0 reading=""; }
+    (( GATE_BODY )) || body=0
+    (( GATE_BEARD )) || beard=0
+    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading"
     PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
   else
     # ASCII fallback tier: two-frame pixel names collapse to the §6 frames

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitagotchi — day, night & the four seasons</title>
+<style>
+  :root{
+    --bg:#010409; --term:#0d1117; --ink:#e6edf3; --muted:#8b949e; --faint:#484f58;
+    --border:#30363d; --green:#3fb950; --ice:#79c0f2; --gold:#ffd75f; --fall:#f0883e;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg); color:var(--ink); margin:0; padding:28px 18px 60px;
+    font-family:ui-monospace,'SFMono-Regular','JetBrains Mono','Fira Code',Menlo,Consolas,monospace;
+    font-size:13px; line-height:1.4}
+  .page{max-width:1080px; margin:0 auto}
+  h1{font-size:16px; margin:0 0 4px}
+  p.note{color:var(--muted); margin:0 0 22px; max-width:78ch}
+  p.note b{color:var(--ink)}
+  code{color:var(--ice)}
+  .term{background:var(--term); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 12px 40px rgba(0,0,0,.55); overflow:hidden; position:relative}
+  .tbar{display:flex; align-items:center; gap:7px; padding:8px 12px; background:#161b22;
+    border-bottom:1px solid var(--border); color:var(--muted); font-size:11px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .tbar .tt{margin-left:8px}
+  .screen{padding:18px}
+  .pix{position:relative; display:inline-block; image-rendering:pixelated}
+
+  .controls{display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap; align-items:center}
+  .chip{border:1px solid var(--border); border-radius:20px; padding:2px 12px; cursor:pointer;
+    color:var(--muted); font-size:12px; background:none; font-family:inherit}
+  .chip.on{color:var(--ink); border-color:var(--sc,var(--green)); box-shadow:0 0 8px var(--scg,rgba(63,185,80,.25))}
+  .controls .lbl{color:var(--faint); font-size:11px}
+
+  .bigstage{border:1px solid var(--sc,#262c33); border-radius:8px; position:relative;
+    height:320px; overflow:hidden; transition:background .4s, border-color .4s}
+  .bigstage .scenetag{position:absolute; top:8px; left:12px; color:var(--faint); font-size:11px; z-index:5}
+  .bigstage .ground{position:absolute; left:14px; right:14px; bottom:44px;
+    border-bottom:2px dotted #2c3440; z-index:1}
+  #pet{position:absolute; bottom:46px; left:50%; transform:translateX(-50%); z-index:3}
+  #sky,#dress,#weather{position:absolute; inset:0; pointer-events:none}
+  #sky{z-index:0} #dress{z-index:2} #weather{z-index:4}
+
+  .matrix{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:18px}
+  .mini{border:1px solid #262c33; border-radius:6px; position:relative; height:150px;
+    overflow:hidden}
+  .mini .mg{position:absolute; left:8px; right:8px; bottom:22px; border-bottom:1px dotted #2c3440}
+  .mini .ml{position:absolute; bottom:4px; left:8px; color:var(--faint); font-size:10px; z-index:6}
+  .mini .mpet{position:absolute; bottom:24px; left:50%; transform:translateX(-50%); z-index:3}
+  .mini .lay{position:absolute; inset:0; pointer-events:none}
+  .cap{color:var(--muted); font-size:12px; margin-top:14px; max-width:94ch}
+  .cap b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>gitagotchi · day, night & the four seasons</h1>
+  <p class="note">The scene is <b>pure</b> <code>f(wall_clock)</code>: season from the local
+  date (<code>--south</code> flips hemispheres), day/night from the local hour (day = 07–19).
+  Nothing is stored; the stage just dresses itself — a sky object, one weather particle type,
+  and ground dressing along the horizon. The pet keeps living its stat-driven life inside the
+  scene, with two crossovers: it <b>sleeps at night</b> and <b>wears the snow</b> in winter.</p>
+
+  <div class="term">
+    <div class="tbar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="tt">gh pet — scene preview</span></div>
+    <div class="screen">
+      <div class="controls">
+        <span class="lbl">time</span>
+        <button class="chip" id="t-day">☀ day</button>
+        <button class="chip on" id="t-night">☾ night</button>
+        <span class="lbl" style="margin-left:10px">season</span>
+        <button class="chip" id="s-spring">spring</button>
+        <button class="chip on" id="s-summer">summer</button>
+        <button class="chip" id="s-fall">fall</button>
+        <button class="chip" id="s-winter">winter</button>
+      </div>
+      <div class="bigstage" id="big">
+        <span class="scenetag" id="scenetag"></span>
+        <div id="sky"></div>
+        <div class="ground"></div>
+        <div id="dress"></div>
+        <span id="pet"></span>
+        <div id="weather"></div>
+      </div>
+
+      <div class="matrix" id="matrix"></div>
+
+      <p class="cap"><b>Scene grammar:</b> each mode is exactly three layers — <b>sky</b>
+      (sun + drifting clouds / crescent moon + twinkling stars), <b>weather</b> (spring petals ·
+      summer fireflies at night · fall leaves · winter snow, all falling 1 cell per tick, chunky),
+      and <b>ground dressing</b> (flowers · grass tufts · leaf piles + pumpkin · snow mounds +
+      snowman). The panel border and accents take the season hue. In winter the snow
+      <i>accumulates on the pet's crown</i> (topmost pixels per column); at night the pet's eyes
+      close and the whole dashboard dims one step, per §5.3. This is the v2 "garden" hook from
+      the design doc: in spring, each flower could be one active day from the contribution
+      calendar — scenery that is still derived, never stored.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const SPRITE = {"f1": ["........................", "....PP............PP....", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", "..PPPDOOOOOOOOOOOODPPP..", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", "..PPPDOROOOKKOOORODPPP..", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD......", ".....DOOWWWWWWOOOD.DD...", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "f2": ["........................", "...PP..............PP...", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", ".PPPPDOOOOOOOOOOOODPPPP.", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".PPPPDOROOOKKOOORODPPPP.", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD.DD...", ".....DOOWWWWWWOOODDOD...", ".....DOOWWWWWWOOOD......", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "pal": {"O": "#dea584", "D": "#914e27", "W": "#f3e0d5", "S": "#d18255", "K": "#22272e", "P": "#f778ba", "R": "#e6c6b3"}};   // Zeruko f1/f2 + palette
+
+/* ── tiny pixel engine ── */
+function renderPix(el,map,pal,px,extra){
+  el.classList.add('pix');
+  el.style.width=map[0].length*px+'px'; el.style.height=map.length*px+'px';
+  el.innerHTML='';
+  const fr=document.createDocumentFragment();
+  const paint=(x,y,c)=>{const d=document.createElement('i');
+    d.style.cssText=`position:absolute;left:${x*px}px;top:${y*px}px;width:${px}px;height:${px}px;background:${c}`;
+    fr.appendChild(d)};
+  map.forEach((row,y)=>{[...row].forEach((ch,x)=>{
+    const c=pal[ch]; if(!c||ch==='.')return; paint(x,y,c)});});
+  (extra||[]).forEach(([x,y,c])=>paint(x,y,c));
+  el.appendChild(fr);
+}
+function stamp(el,grid,pal,px,x,y,op){
+  const s=document.createElement('span');
+  renderPix(s,grid,pal,px);
+  s.style.cssText+=`position:absolute;left:${x}px;top:${y}px;opacity:${op??1}`;
+  el.appendChild(s); return s;
+}
+const closed=g=>g.map(r=>r.replace(/WKW/g,'WDW').replace(/KW/g,'DD')
+                          .replace(/WK/g,'DD').replace(/DKD/g,'DDD'));
+
+/* ── stamps ── */
+const SUN=[".Y..Y..Y.",".YYYYYY.","YYYYYYYY".slice(0,8)+"","YYYYYYYY",".YYYYYY.",".Y..Y..Y."]
+  .map(r=>r.padEnd(9,'.').slice(0,9));
+const SUN2=["Y...Y...Y",".YYYYYYY.","YYYYYYYYY","YYYYYYYYY",".YYYYYYY.","Y...Y...Y"];
+const MOON=["..MMM.","MMMM..","MMM...","MMM...","MMMM..","..MMM."].map(r=>r.padEnd(6,'.'));
+const CLOUD=["..CCCC....",".CCCCCCCC.","CCCCCCCCCC"];
+const STARP=[".M.","MMM",".M."];
+const FLOWER=[["FF","FF","G."],["PP","PP",".G"]];
+const GRASS=[["G.G","GGG"]];
+const PILE=[[".LL.","LLLL"]];
+const PUMPKIN=[[".g.","OOO","OOO"]];
+const SNOWMAN=[["..SS..",".SKKS.",".SSSS.","SSSSSS"]];
+const MOUND=[[".SS.","SSSS"]];
+const PAL={Y:'#ffd75f',M:'#dce6f0',C:'#39424e',F:'#f778ba',P:'#ffffff',G:'#2ea043',
+  L:'#db6d28',O:'#e8762c',g:'#2ea043',S:'#e6edf3',B:'#8b5a2b'};
+const LEAFC=['#f0883e','#db6d28','#c9510c','#d29922'];
+
+/* ── scene configs ── */
+const SEASONS={
+  spring:{hue:'#3fb950', glow:'rgba(63,185,80,.3)', bgD:'#0c1512', bgN:'#070d12',
+    dress:'flowers', particle:'petal', rate:5, month:'april 14'},
+  summer:{hue:'#ffd75f', glow:'rgba(255,215,95,.25)', bgD:'#12130c', bgN:'#080b14',
+    dress:'grass', particle:null, nightParticle:'firefly', rate:7, month:'july 16'},
+  fall:{hue:'#f0883e', glow:'rgba(240,136,62,.3)', bgD:'#15100a', bgN:'#0c0a10',
+    dress:'piles', particle:'leaf', rate:4, month:'october 9'},
+  winter:{hue:'#79c0f2', glow:'rgba(121,192,242,.3)', bgD:'#0c1218', bgN:'#060a12',
+    dress:'snow', particle:'snow', rate:3, month:'january 21'},
+};
+
+/* ── scene builder (works for big stage & minis) ── */
+function makeScene(root, opts){
+  const {season, night, px, petPx}=opts;
+  const cfg=SEASONS[season];
+  const sky=root.querySelector('.lay-sky'), dress=root.querySelector('.lay-dress'),
+        weather=root.querySelector('.lay-weather'), petEl=root.querySelector('.lay-pet');
+  const Wd=root.clientWidth, Ht=root.clientHeight, groundY=Ht-(opts.groundUp||46);
+  root.style.background=`linear-gradient(${night?cfg.bgN:cfg.bgD}, #0d1117 78%)`;
+  root.style.borderColor=cfg.hue+'55';
+
+  /* sky */
+  sky.innerHTML='';
+  if(night){
+    stamp(sky,MOON,PAL,px, Wd-70*px/4, 12);
+    for(let i=0;i<9;i++){
+      const st=stamp(sky,[['M']],PAL,px, 14+((i*97)%(Wd-40)), 10+((i*53)%(groundY*0.5)), .8);
+      st.dataset.tw=i%3;   // twinkle group
+    }
+    stamp(sky,STARP,PAL,px, Wd*0.24, 30, .9).dataset.tw=1;
+  }else{
+    stamp(sky,SUN2,PAL,px, Wd-60*px/3, 12);
+    stamp(sky,CLOUD,PAL,px, Wd*0.18, 26, .8).dataset.drift=1;
+    stamp(sky,CLOUD,PAL,px, Wd*0.55, 48, .5).dataset.drift=2;
+  }
+
+  /* ground dressing */
+  dress.innerHTML='';
+  const spots=[0.12,0.26,0.7,0.84, 0.44];
+  if(cfg.dress==='flowers') spots.forEach((f,i)=>stamp(dress,FLOWER[i%2],PAL,px, Wd*f, groundY-3*px+1));
+  if(cfg.dress==='grass')   spots.forEach(f=>stamp(dress,GRASS[0],PAL,px, Wd*f, groundY-2*px+1));
+  if(cfg.dress==='piles'){ spots.slice(0,4).forEach(f=>stamp(dress,PILE[0],{L:LEAFC[Math.floor(f*4)%4]},px, Wd*f, groundY-2*px+1));
+    stamp(dress,PUMPKIN[0],PAL,px, Wd*0.9, groundY-3*px+1); }
+  if(cfg.dress==='snow'){ spots.forEach(f=>stamp(dress,MOUND[0],PAL,px, Wd*f, groundY-2*px+1));
+    stamp(dress,SNOWMAN[0],{S:'#e6edf3',K:'#22272e'},px, Wd*0.88, groundY-4*px+1);
+    const line=document.createElement('div');
+    line.style.cssText=`position:absolute;left:8px;right:8px;top:${groundY}px;height:${px}px;background:rgba(230,237,243,.75)`;
+    dress.appendChild(line); }
+
+  /* pet frame + snow cap */
+  function petFrame(t){
+    let f=[SPRITE.f1,SPRITE.f2][t%2];
+    if(night) f=closed(f);
+    let extra=[];
+    if(season==='winter'){
+      let T=18; f.forEach((r,i)=>{if(/[^.]/.test(r)&&i<T)T=i});
+      f.forEach((r,i)=>{}); // noop
+      const tops={};
+      for(let x=0;x<24;x++){for(let y=0;y<18;y++){if(f[y][x]!=='.'){tops[x]=y;break}}}
+      Object.entries(tops).forEach(([x,y])=>{ if(y<=T+1) extra.push([+x,y-1,'#e6edf3']); });
+    }
+    return {f,extra};
+  }
+
+  /* weather particles */
+  const parts=[];
+  const ptype = night && cfg.nightParticle ? cfg.nightParticle : cfg.particle;
+  function spawn(){
+    if(!ptype) return;
+    const x=8+Math.random()*(Wd-24);
+    if(ptype==='firefly') parts.push({x, y:groundY-20-Math.random()*80, k:'firefly', life:40, ph:Math.random()*6});
+    else parts.push({x, y:-6, k:ptype, c:LEAFC[Math.floor(Math.random()*4)], life:999, ph:Math.random()*6});
+  }
+  function drawParts(t){
+    weather.innerHTML='';
+    parts.forEach(p=>{
+      if(p.k==='firefly'){
+        if((t+Math.floor(p.ph))%3===0) return;      // blink
+        stamp(weather,[['Y']],PAL,px, p.x+Math.sin(t/3+p.ph)*8, p.y+Math.sin(t/2+p.ph)*4, .95);
+      }else if(p.k==='snow'){
+        stamp(weather, (Math.floor(p.ph*7)%5===0)?STARP:[['S']], PAL, px, p.x, p.y, .9);
+      }else if(p.k==='leaf'){
+        stamp(weather,[['L','L'],[(t+Math.floor(p.ph))%2?'L':'.', '.']],{L:p.c}, px, p.x, p.y);
+      }else if(p.k==='petal'){
+        stamp(weather,[[(t%2)?'F':'P']],PAL,px, p.x, p.y, .95);
+      }
+    });
+  }
+  function tickParts(t){
+    for(let i=parts.length-1;i>=0;i--){
+      const p=parts[i];
+      if(p.k==='firefly'){ if(--p.life<=0) parts.splice(i,1); continue; }
+      p.y += p.k==='snow'? px : p.k==='leaf'? px : px*1.2;
+      p.x += Math.sin(t/2+p.ph) * (p.k==='leaf'?3:1.4);
+      if(p.y>groundY-4) parts.splice(i,1);
+    }
+    if(t%Math.max(1,8-cfg.rate)===0) spawn();
+    if(ptype==='firefly' && parts.length<6 && t%4===0) spawn();
+  }
+
+  return {
+    tick(t){
+      tickParts(t); drawParts(t);
+      const {f,extra}=petFrame(Math.floor(t/2));
+      renderPix(petEl,f,SPRITE.pal,petPx,extra);
+      petEl.style.filter=`drop-shadow(0 0 14px ${cfg.hue}33)`;
+      sky.querySelectorAll('[data-tw]').forEach(s=>{
+        s.style.opacity = ((t+ +s.dataset.tw)%4===0)? .25 : .85});
+      sky.querySelectorAll('[data-drift]').forEach(s=>{
+        if(t% (2* +s.dataset.drift) ===0) s.style.left=(parseFloat(s.style.left)+1)%(Wd)+'px'});
+    },
+    label: `${cfg.month} · ${season} · ${night?'22:41 → night ☾':'14:02 → day ☀'}`
+  };
+}
+
+/* ── big stage wiring ── */
+const big=document.getElementById('big');
+big.insertAdjacentHTML('afterbegin','');
+document.getElementById('sky').classList.add('lay-sky');
+document.getElementById('dress').classList.add('lay-dress');
+document.getElementById('weather').classList.add('lay-weather');
+document.getElementById('pet').classList.add('lay-pet');
+
+let season='summer', night=true, scene=null, T=0;
+function rebuild(){
+  scene=makeScene(big,{season, night, px:4, petPx:8, groundUp:46});
+  document.getElementById('scenetag').textContent=scene.label;
+  const cfg=SEASONS[season];
+  document.querySelectorAll('.chip').forEach(c=>{c.style.setProperty('--sc',cfg.hue);
+    c.style.setProperty('--scg',cfg.glow)});
+}
+[['t-day',()=>{night=false}],['t-night',()=>{night=true}]].forEach(([id,fn])=>{
+  document.getElementById(id).onclick=()=>{fn();
+    document.getElementById('t-day').classList.toggle('on',!night);
+    document.getElementById('t-night').classList.toggle('on',night);
+    rebuild()};});
+Object.keys(SEASONS).forEach(s=>{
+  document.getElementById('s-'+s).onclick=()=>{season=s;
+    Object.keys(SEASONS).forEach(s2=>document.getElementById('s-'+s2).classList.toggle('on',s2===s));
+    rebuild()};});
+
+/* ── matrix of 8 minis ── */
+const matrix=document.getElementById('matrix');
+const minis=[];
+[false,true].forEach(n=>{
+  Object.keys(SEASONS).forEach(s=>{
+    const d=document.createElement('div'); d.className='mini';
+    d.innerHTML=`<div class="lay lay-sky"></div><div class="mg"></div>
+      <div class="lay lay-dress"></div><span class="mpet lay-pet"></span>
+      <div class="lay lay-weather"></div>
+      <div class="ml">${s} · ${n?'night ☾':'day ☀'}</div>`;
+    matrix.appendChild(d);
+    minis.push({el:d, season:s, night:n});
+  });
+});
+requestAnimationFrame(()=>{
+  rebuild();
+  minis.forEach(m=>{ m.scene=makeScene(m.el,{season:m.season, night:m.night, px:2.5, petPx:3.5, groundUp:24}); });
+  setInterval(()=>{ T++;
+    scene && scene.tick(T);
+    minis.forEach((m,i)=>m.scene.tick(T+i*2));
+  }, 250);
+});
+</script>
+</body>
+</html>

@@ -8,6 +8,8 @@ draw_main() { # assoc_name self
   local self=$2
   IW=$((COLS - 2))
   local is_egg=0; [[ ${P[STAGE]:-} == egg ]] && is_egg=1
+  # state legality (§8.4): floor props only when the pet is idle and hatched
+  gate_props "$ANIM_STATE" "${P[STAGE]:-}"
 
   # bottom block: horizon+voice+dash rows; stage gets the rest (air → stage, §3)
   insight_text "$1"; [[ $self != 1 ]] && INSIGHT=""
@@ -87,7 +89,7 @@ draw_main() { # assoc_name self
       done
     fi
     # window vignette: pet stares out a little window (§5.3)
-    if [[ $VIG_CUR == window && $ANIM_STATE == idle ]]; then
+    if [[ $VIG_CUR == window ]] && (( GATE_PROPS )); then
       stage_put 0 2 3 "${C_CHROME}┌─┐${RS}"
       stage_put 1 2 3 "${C_CHROME}│ │${RS}"
       stage_put 2 2 3 "${C_CHROME}└─┘${RS}"
@@ -124,7 +126,7 @@ draw_main() { # assoc_name self
       PET_W=0; local l; for l in "${SPCOMP_PLAIN[@]}"; do (( ${#l} > PET_W )) && PET_W=${#l}; done
     else
       local frame=$ANIM_FRAME
-      [[ $VIG_CUR == belly && $ANIM_STATE == idle ]] && frame=belly
+      [[ $VIG_CUR == belly ]] && (( GATE_PROPS )) && frame=belly
       pet_compose "$1" "$frame" "$ANIM_BLINK" "$faint"
     fi
     local petx=$(( (IW - PET_W) / 2 + PET_XOFF ))
@@ -142,13 +144,13 @@ draw_main() { # assoc_name self
       stage_put $((pet_top + 1)) $((petx + PET_W + 1)) ${#G_THERMO} "${C_SECWARN}${G_THERMO}${RS}"
     fi
     # flies orbit a messy pet (§5.3)
-    if [[ $VIG_CUR == flies ]]; then
+    if [[ $VIG_CUR == flies ]] && (( GATE_PROPS )); then
       local fly=$G_FLY1; (( TICK % 4 < 2 )) && fly=$G_FLY2
       stage_put $((pet_top)) $((petx - 4)) 3 "${C_CHROME}${fly}${RS}"
       stage_put $((pet_top + 1)) $((petx + PET_W + 1)) 3 "${C_CHROME}${fly}${RS}"
     fi
     # ball: curiosity ≥ 60 → pet bats it between two columns (§5.3)
-    if [[ $VIG_CUR == ball && $ANIM_STATE == idle ]]; then
+    if [[ $VIG_CUR == ball ]] && (( GATE_PROPS )); then
       local bx=$(( petx - 6 - ((TICK / 6) % 2) * 3 ))
       stage_put $((SH - 1)) "$bx" 1 "$(fg 111)${G_BALL}${RS}"
     fi

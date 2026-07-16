@@ -477,7 +477,7 @@ anim_update() { # assoc_name self
   elif [[ $self == 1 && -n ${A[HEALTH]:-} ]] && (( ${A[HEALTH]} < 40 )); then ANIM_STATE=sick
   elif (( TICK < EAT_UNTIL )); then ANIM_STATE=eat
   elif [[ $self == 1 ]] && (( TICK < ${FETCH_UNTIL:-0} )); then ANIM_STATE=fetch
-  elif [[ ${A[SLEEPING]:-0} == 1 ]]; then ANIM_STATE=sleep
+  elif [[ ${A[SLEEPING]:-0} == 1 && -z ${A[VISITORS]:-} ]]; then ANIM_STATE=sleep  # hosting wins: guests keep the pet up (§8.4)
   elif (( TICK < CELEB_UNTIL )); then ANIM_STATE=celebrate
   else ANIM_STATE=idle; fi
 
@@ -842,10 +842,9 @@ demo_tick() {
     wired)
       S[ENERGY]=95 ;;   # pupils dilate — big, black, too awake to blink
     curious)
-      # scrunched brows + the book stack; the vignette is staged directly so
-      # a real low stat (flies/window/belly) can't shove the books offstage
-      # visitors (real or a stale PRETEND_VISITORS export) would keep the
-      # corner clear for the crowd — the staged show gets the stage alone
+      # the reading pose (the pet holds a book, turns the pages); the vignette
+      # is staged directly so a real low stat (flies/window/belly) can't shove
+      # it offstage, and visitors are cleared so the reader has the stage alone
       S[CURIOSITY]=90; S[VISITORS]=; VIG_CUR=books ;;
     social)
       S[SOCIAL]=90 ;;   # the tail wags — appendages swish on the half-second
