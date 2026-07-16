@@ -1,0 +1,4 @@
+# The root *.html files are design mockups and references, not the app — the
+# app is bash + jq. Mark them as documentation so GitHub's language stats
+# reflect the actual project (Shell), not the mockups.
+*.html linguist-documentation
