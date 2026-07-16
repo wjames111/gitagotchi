@@ -7,6 +7,13 @@ VERSION="1.0.7"
 die() { printf 'gh-pet: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# same_login a b — GitHub logins are case-insensitive, so every comparison of
+# one against another must be too: the CLI arg and the PRETEND_* knobs carry
+# whatever casing was typed, while API payloads carry the canonical spelling.
+# An empty side never matches (unauthenticated ME, unset knob) — `gh-pet ""`
+# is not everyone. stats.jq holds the jq-side twin of this rule.
+same_login() { [[ -n $1 && -n $2 && ${1,,} == "${2,,}" ]]; }
+
 # ── glyph tiers (design.md §2.1) ────────────────────────────────────────────
 # Tier B (common unicode) is default on UTF-8 terminals; --ascii forces tier A.
 init_glyphs() { # $1 = "A" or "B"

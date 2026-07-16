@@ -135,7 +135,10 @@ elif [[ -n $TOKEN ]]; then
 fi
 TARGET=${ARG_LOGIN:-$ME}
 [[ -z $TARGET ]] && die "no login: run 'gh auth login' or pass one (gh-pet <login>)"
-SELF=0; [[ $TARGET == "$ME" || -n $FIXDIR ]] && SELF=1
+# ME is canonical (from the API) but TARGET may be typed any way; miss the match
+# and your own pet is fetched as a stranger's — SELF gates the authed tier, so
+# health and notifications would silently go missing (same_login, util.sh)
+SELF=0; { same_login "$TARGET" "$ME" || [[ -n $FIXDIR ]]; } && SELF=1
 
 declare -A S F
 declare -a FR_LOGINS=() FR_SORTED=() VPOOL=() VPOOL_URL=() FLOATERS=() FL_DIR=()
@@ -499,8 +502,8 @@ friend_row_load() { # login → FRROW[login]
   # preview knobs: pretend a friend was an egg / hatchling at first sight, so
   # the real hatch / level-up celebration fires on their very next derive
   if [[ -z ${PREV_FRSTAGE[$login]:-} ]]; then
-    [[ $login == "${GITAGOTCHI_PRETEND_HATCH:-}" ]] && PREV_FRSTAGE[$login]=egg
-    [[ $login == "${GITAGOTCHI_PRETEND_LEVEL:-}" ]] && PREV_FRSTAGE[$login]=hatchling
+    same_login "$login" "${GITAGOTCHI_PRETEND_HATCH:-}" && PREV_FRSTAGE[$login]=egg
+    same_login "$login" "${GITAGOTCHI_PRETEND_LEVEL:-}" && PREV_FRSTAGE[$login]=hatchling
   fi
   # a friend's life moves: hatching gets confetti, growing up gets sparkles
   local prevst=${PREV_FRSTAGE[$login]:-}

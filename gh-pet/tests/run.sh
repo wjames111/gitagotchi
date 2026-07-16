@@ -330,6 +330,49 @@ assert_contains "$BF" "healthysleep sleep_1"  "badge: a healthy, sleeping pet re
 assert_contains "$BF" "hibsick hibernate_1"   "badge: hibernation still supersedes sick and sleep"
 assert_contains "$BF" "unauth idle_1"         "badge: unknown (unauth) health never triggers the sick frame"
 
+echo "· logins are case-insensitive (same_login, util.sh): the CLI arg and the"
+echo "  PRETEND_* knobs carry whatever casing was typed, API payloads carry the"
+echo "  canonical spelling — the jq side has its own twin of this rule"
+SL=$(
+  source "$ROOT/lib/util.sh" 2>/dev/null
+  same_login WillJames willjames && echo "case-insensitive yes"
+  same_login mona mona           && echo "identical yes"
+  same_login mona defunkt        || echo "different no"
+  same_login "" willjames        || echo "empty-left no"
+  same_login willjames ""        || echo "empty-right no"
+  same_login "" ""               || echo "both-empty no"
+)
+assert_contains "$SL" "case-insensitive yes" "same_login: WillJames is willjames"
+assert_contains "$SL" "identical yes"        "same_login: a login matches itself"
+assert_contains "$SL" "different no"         "same_login: distinct logins stay distinct"
+assert_contains "$SL" "empty-left no"        "same_login: an unauthenticated ME matches nobody"
+assert_contains "$SL" "empty-right no"       "same_login: an unset PRETEND_* knob matches nobody"
+assert_contains "$SL" "both-empty no"        "same_login: empty is not everyone"
+
+echo "· your own pet is Zeruko however you spell yourself (derive.sh): getting"
+echo "  this wrong renders your own pet under a stranger's derived name — the"
+echo "  same comparison decides SELF, which gates the authed fetch tier"
+ZK=$(
+  export XDG_CACHE_HOME=$(mktemp -d)
+  SPRITE_DIR="$ROOT/sprites"; BASE_DIR="$ROOT"
+  # the suite runs set -u, which this subshell inherits: load_state reads
+  # ${#PIX_SPECIES[@]} and PIXNAME, so declare them empty (pixel.sh's job in
+  # the app) and take the sprites.sh fallback path rather than die unbound
+  declare -a PIX_SPECIES=(); declare -A PIXNAME=()
+  source "$ROOT/lib/util.sh"; source "$ROOT/lib/sprites.sh"
+  source "$ROOT/lib/fetch.sh"; source "$ROOT/lib/derive.sh"
+  _mk() { mkdir -p "$CACHE_ROOT/$1"; printf 'ID=3151702\nLOGIN=%s\nCREATED=2019-03-14T09:00:00Z\n' "$1" > "$CACHE_ROOT/$1/state.env"; }
+  _mk WillJames; _mk SomeoneElse
+  FIXDIR=""
+  ME=willjames; declare -A Z1; load_state Z1 WillJames;   echo "wrongcase ${Z1[NAME]}"
+  ME=willjames; declare -A Z2; load_state Z2 SomeoneElse; echo "stranger ${Z2[NAME]}"
+  ME="";        declare -A Z3; load_state Z3 WillJames;   echo "unauth ${Z3[NAME]}"
+  rm -rf "$XDG_CACHE_HOME"
+)
+assert_contains "$ZK" "wrongcase Zeruko"  "your pet is Zeruko even when you type your login in the wrong case"
+assert_contains "$ZK" "stranger Lonisux"  "a friend keeps their derived name (Zeruko is not handed out)"
+assert_contains "$ZK" "unauth Lonisux"    "unauthenticated: an empty ME never claims a pet as yours"
+
 echo "· state legality table (§8.4): the single source of truth for which"
 echo "  visual layers may coexist — no sleeping-reader, no sick ball-batter,"
 echo "  no egg throwing a ball (render.sh gate_expr / gate_props)"
