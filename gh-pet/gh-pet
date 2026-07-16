@@ -198,9 +198,14 @@ term_size() {
   fi
 }
 
+# cbreak, not just -echo: echo-off while canonical mode is still on is exactly
+# how a shell asks for a password, and terminals badge that tty state with a key
+# icon (macOS Terminal, iTerm2, Ghostty). -icanon says "full-screen app", not
+# "password prompt", and is what read -rsn1 wants anyway.
 enter_alt() {
   (( IN_ALT )) && return
-  tput smcup 2>/dev/null; tput civis 2>/dev/null; stty -echo 2>/dev/null
+  tput smcup 2>/dev/null; tput civis 2>/dev/null
+  stty -echo -icanon min 1 time 0 2>/dev/null
   IN_ALT=1
 }
 
