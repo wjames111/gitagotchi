@@ -728,12 +728,28 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   [[ $self == 1 && $VIG_CUR == books && $ANIM_STATE == idle ]] && (( ! hosting )) && PET_READING=1
   pet_compose "$1" "$ANIM_FRAME" "$ANIM_BLINK" "$faint"
   local reading_on=$PET_READING; PET_READING=""
-  # company's over: everyone shrinks to half scale so the party always fits.
+  # company's over: everyone shrinks so the party always fits. The cameo is
+  # sized to the crowd rather than pinned at 12 — 12 was a 2:1 squeeze of the
+  # old 24-wide art, but against 48-wide art it is 4:1 and species stops
+  # reading: two pets sharing a language's colour become the same blob, and
+  # only the beard tells them apart. With one guest there is room for 24 and
+  # the pets are recognisable again; with three it degrades to what it was.
   # pet_compose just sized and gated this pet's beard (PET_BEARD) — hand it
   # over so the host keeps it: guests shouldn't shave the elder they came to see
+  CAMEO_W=12
+  if (( hosting )); then
+    local -a _vl=(${P[VISITORS]}); local _vn=${#_vl[@]}
+    (( _vn > 3 )) && _vn=3
+    # host + guests, each with a 2-col gap, inside the stage
+    local _fit=$(( (piw - 2 - 2 * (_vn + 1)) / (_vn + 1) ))
+    CAMEO_W=$_fit
+    (( CAMEO_W > 24 )) && CAMEO_W=24        # never bigger than the real sprite
+    (( CAMEO_W < 12 )) && CAMEO_W=12        # never worse than it used to be
+    (( CAMEO_W % 2 )) && CAMEO_W=$(( CAMEO_W - 1 ))
+  fi
   if (( hosting )) && \
-     pix_render_half "${P[SPECIES]}" "${P[COLOR_HEX]:-#dea584}" "$ANIM_FRAME" "${PET_BEARD:-0}"; then
-    PET_LINES=("${PIXH[@]}"); PET_W=12; PET_H=${#PIXH[@]}
+     pix_render_half "${P[SPECIES]}" "${P[COLOR_HEX]:-#dea584}" "$ANIM_FRAME" "${PET_BEARD:-0}" "$CAMEO_W"; then
+    PET_LINES=("${PIXH[@]}"); PET_W=$CAMEO_W; PET_H=${#PIXH[@]}
   fi
   local petx=$(( pix0 + (piw - PET_W) / 2 + PET_XOFF ))
   # ...and stands still at the left edge to host (no wandering with guests)
@@ -826,7 +842,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
     # transparent margins, so touching still reads as spaced)
     local vgap=2 vn=${#vlog[@]}
     (( vn > 3 )) && vn=3
-    while (( vgap > 0 && petx + PET_W + vn * (12 + vgap) > pw - 2 )); do
+    while (( vgap > 0 && petx + PET_W + vn * (CAMEO_W + vgap) > pw - 2 )); do
       vgap=$(( vgap - 1 ))
     done
     local vrcur=$(( petx + PET_W + vgap ))
@@ -850,8 +866,8 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
         local vbeard=$BEARD_TIER
         (( GATE_BEARD )) || vbeard=0
         PIX_BEARD_RGB=${VPQ[BEARD_RGB]:-}
-        if pix_render_half "${VPQ[SPECIES]}" "${VPQ[COLOR_HEX]:-#dea584}" "$vframe" "$vbeard"; then
-          local vw=12 vh=${#PIXH[@]}
+        if pix_render_half "${VPQ[SPECIES]}" "${VPQ[COLOR_HEX]:-#dea584}" "$vframe" "$vbeard" "$CAMEO_W"; then
+          local vw=$CAMEO_W vh=${#PIXH[@]}
           local vpx=-1
           if (( vrcur + vw <= pw - 2 )); then
             vpx=$vrcur; vrcur=$(( vrcur + vw + vgap ))
