@@ -54,6 +54,25 @@ assert_contains "$SNAP2" "Lonisux" "name generator frozen: id 3151702 → Lonisu
 
 echo "· misery cap (plan.md §3.1): starving pet cannot be happy"
 rm -rf "$XDG_CACHE_HOME/gitagotchi"
+# The cap only BINDS — and only says so — when the raw composite would clear 60,
+# so the fixture has to be an elite pet with an empty belly. That premise is worth
+# asserting on its own: if a reweight drags raw under 60 the pet is honestly
+# miserable without the cap, the insight below vanishes, and the assert_contains
+# alone would just report a missing string. Check the premise first so the failure
+# names the cause.
+_sargs=(-r --arg now "$(date +%s)" --arg login octotest)
+for _f in user repos events merged approved changesreq reviewedby starred stale \
+          alerts calendar notifications medals orgs following; do
+  if [[ -s fixtures-starving/$_f.json ]]; then _sargs+=(--slurpfile "$_f" "fixtures-starving/$_f.json")
+  else _sargs+=(--argjson "$_f" null); fi
+done
+RAWS=$(jq -n "${_sargs[@]}" -f "$ROOT/lib/stats.jq" 2>/dev/null \
+       | sed -n "s/^HAPPY_RAW='\([0-9]*\)'.*/\1/p")
+if [[ $RAWS =~ ^[0-9]+$ ]] && (( RAWS > 60 )); then
+  ok "starving fixture still exercises the cap (raw $RAWS > 60)"
+else
+  fail "starving fixture no longer binds the cap (raw=${RAWS:-none}) — the cap tests below are testing nothing; make the pet elite again or move the cap test to a low-weight survival stat (see make_fixtures.sh)"
+fi
 SNAP3=$("$ROOT/gh-pet" --fixtures fixtures-starving --snapshot --cozy 2>&1)
 assert_contains "$SNAP3" "happiness capped at 60" "insight explains the cap"
 HVAL=$(awk '/happiness/{for(i=NF;i>0;i--) if($i ~ /^[0-9]+$/){print $i; exit}}' <<<"$SNAP3")
@@ -75,6 +94,27 @@ ASP=$(jq -n -r --arg now "$_now" --arg login self \
 _hap=$(sed -n "s/^HAPPINESS='\([0-9]*\)'.*/\1/p" <<<"$ASP")
 _cap=$(sed -n "s/^CAPPED_BY='\(.*\)'\$/\1/p" <<<"$ASP")
 if [[ -n $_hap ]] && (( _hap > 60 )) && [[ -z $_cap ]]; then ok "aspirational stats never hard-cap (happiness $_hap > 60, uncapped)"; else fail "an aspirational stat capped a healthy pet (happiness=${_hap:-none} capped_by='$_cap')"; fi
+
+echo "· you are never your own guest: GitHub logins are case-insensitive, so"
+echo "  'gh-pet SELF' must still recognize self/app as its own — otherwise the"
+echo "  owner of every repo you touch reads as a stranger and you turn up on your"
+echo "  own stage as a visitor (and in your own outbound social score)"
+_vev=$(jq -n --argjson n "$_now" '[
+  {type:"IssueCommentEvent",created_at:(($n-600)|todate),repo:{name:"self/app"}},
+  {type:"IssueCommentEvent",created_at:(($n-600)|todate),repo:{name:"mona/hello"},
+   payload:{issue:{user:{login:"mona"}}}}]')
+VIS=$(jq -n -r --arg now "$_now" --arg login SELF \
+  --argjson user '[{"id":3151702,"login":"self","created_at":"2019-03-14T09:00:00Z"}]' \
+  --argjson events "[$_vev]" \
+  --argjson repos null --argjson merged null --argjson approved null --argjson changesreq null \
+  --argjson reviewedby null --argjson starred null --argjson stale null --argjson alerts null \
+  --argjson calendar null --argjson notifications null --argjson medals null \
+  --argjson orgs null --argjson following null -f "$ROOT/lib/stats.jq" 2>&1)
+_vis=$(sed -n "s/^VISITORS='\(.*\)'\$/\1/p" <<<"$VIS")
+if [[ " $_vis " != *" self "* && " $_vis " != *" SELF "* ]]; then ok "self never appears in its own visitor list (VISITORS='$_vis')"; else fail "the pet is visiting itself (VISITORS='$_vis')"; fi
+if [[ " $_vis " == *" mona "* ]]; then ok "a real last-hour interaction still drops by (mona)"; else fail "guest list lost a real visitor (VISITORS='$_vis')"; fi
+_out=$(sed -n "s/^OUTBOUND7='\([0-9]*\)'\$/\1/p" <<<"$VIS")
+if [[ $_out == 1 ]]; then ok "outbound social counts others' repos only, whatever the login's casing"; else fail "own-repo comments leaked into outbound social (OUTBOUND7=${_out:-none}, want 1)"; fi
 
 echo "· unauthenticated / public-only path (plan.md §9.2): the pure function still"
 echo "  derives when health is unknown and the contribution calendar is absent"
@@ -141,6 +181,48 @@ SNAPB=$(GITAGOTCHI_PRETEND_WISDOM=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COL
 assert_contains "$SNAPB" "226;208;160" "sage pet wears the beard in its own shade (platinum)"
 SNAPB2=$(GITAGOTCHI_PRETEND_WISDOM=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 if grep -qF "226;208;160" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
+
+# The beard hunts for the face — the mouth is "the first KK+ run below the
+# eyes" — so it MUST read a pristine grid. An elder's spectacle rim (and a
+# wired pet's dilated pupil) paint fresh K's directly under the eyes, and the
+# hunt used to lock onto the left lens: the beard grew off the glasses, a row
+# high and hanging past the side of the face. The fixture pet is an adult
+# caterpillar, so no snapshot reaches this pairing — pin it directly.
+# Drives the REAL pix_render, so the ordering of its transform calls is what's
+# under test (asserting on pix_apply_beard alone would pass even if the anchor
+# hunt drifted back below pix_apply_specs).
+BEARDA=$(
+  BASE_DIR="$ROOT/lib" SPRITE_DIR="$ROOT/sprites"
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/pixel.sh" 2>/dev/null
+  pix_db_load
+  PIX_MODE=T PIX_CAPTURE=1 PIX_BEARD_RGB="226;208;160"
+  #           id  frame  blink specs tired flip body mood sixp bigeye brows wag beard …
+  for specs in 0 1; do
+    pix_palette cat "#3178c6" 0
+    pix_render cat idle_1 0 "$specs" 0 0 0 0 0 0 0 0 2 0 0 "" 0
+    printf "specs$specs %s\n" "${PIXGRID[@]}"   # tag every row with its case
+  done
+)
+# the mouth-anchored beard: an 8-wide run centred under the cat's chin, the
+# body's D rim still intact on both flanks. Asserted per-case — untagged, the
+# adult's good row satisfies the grep and the elder's breakage sails through.
+assert_contains "$BEARDA" "specs0 .....DOOBBBBBBBBOOD....." "beard hangs off the adult's mouth, centred"
+assert_contains "$BEARDA" "specs1 .....DOOBBBBBBBBOOD....." "the elder's beard hangs in the very same place"
+# the left-lens beard: shoved 4px left, spilling out over the body outline
+if grep -qF "BBBBBBBBKOOOROD" <<<"$BEARDA"; then
+  fail "beard ignores the elder's spectacle rim (not the left lens)"
+else
+  ok "beard ignores the elder's spectacle rim (not the left lens)"
+fi
+# and the glasses still get drawn — the fix must not cost the elder its specs
+assert_contains "$BEARDA" "DKKWKKKKKKKWKD" "the bespectacled elder still wears its glasses"
+
+# the beard is earned: a guest turning up must not shave the host. Everyone
+# shrinks to half scale while hosting, and the shrink used to drop it.
+SNAPH=$(GITAGOTCHI_PRETEND_WISDOM=95 GITAGOTCHI_PRETEND_VISITORS="octotest" \
+  COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 \
+  "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
+assert_contains "$SNAPH" "226;208;160" "a hosting pet keeps the beard it earned (half scale)"
 echo "· curiosity (≥75): the pet holds and reads a book (gitagotchi-reading.html)"
 SNAPBK=$(GITAGOTCHI_PRETEND_VIG=books COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 assert_contains "$SNAPBK" "47;95;176"   "reading: the held book's blue cover renders"
@@ -308,6 +390,49 @@ assert_contains "$BF" "sicksleep sick_1 1 0"  "badge: a sick, sleeping pet reads
 assert_contains "$BF" "healthysleep sleep_1"  "badge: a healthy, sleeping pet reads asleep"
 assert_contains "$BF" "hibsick hibernate_1"   "badge: hibernation still supersedes sick and sleep"
 assert_contains "$BF" "unauth idle_1"         "badge: unknown (unauth) health never triggers the sick frame"
+
+echo "· logins are case-insensitive (same_login, util.sh): the CLI arg and the"
+echo "  PRETEND_* knobs carry whatever casing was typed, API payloads carry the"
+echo "  canonical spelling — the jq side has its own twin of this rule"
+SL=$(
+  source "$ROOT/lib/util.sh" 2>/dev/null
+  same_login WillJames willjames && echo "case-insensitive yes"
+  same_login mona mona           && echo "identical yes"
+  same_login mona defunkt        || echo "different no"
+  same_login "" willjames        || echo "empty-left no"
+  same_login willjames ""        || echo "empty-right no"
+  same_login "" ""               || echo "both-empty no"
+)
+assert_contains "$SL" "case-insensitive yes" "same_login: WillJames is willjames"
+assert_contains "$SL" "identical yes"        "same_login: a login matches itself"
+assert_contains "$SL" "different no"         "same_login: distinct logins stay distinct"
+assert_contains "$SL" "empty-left no"        "same_login: an unauthenticated ME matches nobody"
+assert_contains "$SL" "empty-right no"       "same_login: an unset PRETEND_* knob matches nobody"
+assert_contains "$SL" "both-empty no"        "same_login: empty is not everyone"
+
+echo "· your own pet is Zeruko however you spell yourself (derive.sh): getting"
+echo "  this wrong renders your own pet under a stranger's derived name — the"
+echo "  same comparison decides SELF, which gates the authed fetch tier"
+ZK=$(
+  export XDG_CACHE_HOME=$(mktemp -d)
+  SPRITE_DIR="$ROOT/sprites"; BASE_DIR="$ROOT"
+  # the suite runs set -u, which this subshell inherits: load_state reads
+  # ${#PIX_SPECIES[@]} and PIXNAME, so declare them empty (pixel.sh's job in
+  # the app) and take the sprites.sh fallback path rather than die unbound
+  declare -a PIX_SPECIES=(); declare -A PIXNAME=()
+  source "$ROOT/lib/util.sh"; source "$ROOT/lib/sprites.sh"
+  source "$ROOT/lib/fetch.sh"; source "$ROOT/lib/derive.sh"
+  _mk() { mkdir -p "$CACHE_ROOT/$1"; printf 'ID=3151702\nLOGIN=%s\nCREATED=2019-03-14T09:00:00Z\n' "$1" > "$CACHE_ROOT/$1/state.env"; }
+  _mk WillJames; _mk SomeoneElse
+  FIXDIR=""
+  ME=willjames; declare -A Z1; load_state Z1 WillJames;   echo "wrongcase ${Z1[NAME]}"
+  ME=willjames; declare -A Z2; load_state Z2 SomeoneElse; echo "stranger ${Z2[NAME]}"
+  ME="";        declare -A Z3; load_state Z3 WillJames;   echo "unauth ${Z3[NAME]}"
+  rm -rf "$XDG_CACHE_HOME"
+)
+assert_contains "$ZK" "wrongcase Zeruko"  "your pet is Zeruko even when you type your login in the wrong case"
+assert_contains "$ZK" "stranger Lonisux"  "a friend keeps their derived name (Zeruko is not handed out)"
+assert_contains "$ZK" "unauth Lonisux"    "unauthenticated: an empty ME never claims a pet as yours"
 
 echo "· state legality table (§8.4): the single source of truth for which"
 echo "  visual layers may coexist — no sleeping-reader, no sick ball-batter,"

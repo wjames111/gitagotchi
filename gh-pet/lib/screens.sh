@@ -316,8 +316,8 @@ stat_detail_info() { # assoc_name idx → D_WHY D_SRC D_URL D_OPEN
       D_URL="https://github.com/$login?tab=repositories"
       D_OPEN="open your repos" ;;
     happiness)
-      D_WHY="weighted composite of the nine · misery cap: any stat <20 caps at 60"
-      D_SRC="0.20·hunger 0.15·energy 0.20·mood 0.10·fit 0.10·clean …"
+      D_WHY="weighted composite of the nine · misery cap: any survival stat <20 caps at 60"
+      D_SRC="0.28·hunger 0.24·mood 0.18·energy 0.10·social …"
       D_URL="" ;;
   esac
 }

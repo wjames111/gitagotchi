@@ -779,13 +779,24 @@ pix_apply_mood() { # nameref grid, mood (1 smile · -1 frown; 0 keeps straight)
   done
 }
 
-pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
-  local -n G=$1     # AROUND the mouth (gitagotchi-elders_1.html): a mustache
-  local blen=$2     # flanks the anchor, a tapered beard hangs below it
-  # the anchor is the FACE, found like the mockup: the mouth (a KK run below
-  # the eyes), else the beak (PP), else two rows under the eyes centered
-  # between them. pix_find_eyes has already set EYE_ROW/E1S…E2E (two-eye
-  # sprites); profile sprites (one eye) fall through to the lone-cluster scan.
+# the beard's anchor is the FACE, found like the mockup's findAnchor: the
+# mouth (a KK run below the eyes), else the beak (PP), else two rows under the
+# eyes centered between them. pix_find_eyes has already set EYE_ROW/E1S…E2E
+# (two-eye sprites); profile sprites (one eye) fall through to the lone-cluster
+# scan.
+#
+# ██ Runs on the PRISTINE grid — call it before specs/bigeye paint. ██
+# The mockup hands the CLEAN frame to beardPixels AND glassesPixels; we compose
+# in place instead, and two transforms lay fresh K pixels directly under the
+# eyes: the spectacle bottom rim (pix_apply_specs) and the dilated pupil
+# (pix_apply_bigeyes). The mouth hunt below takes the FIRST KK+ run under the
+# eyes, so a bespectacled elder anchored on its left lens — the beard grew off
+# the glasses, a row high and hanging past the side of the face, with the real
+# mouth left bare. Same hazard pix_apply_bags dodges by taking its eye span
+# from a pristine pix_find_eyes.
+pix_find_anchor() { # nameref grid — sets BEARD_ROW / BEARD_COL (row < 0 = no face)
+  local -n G=$1
+  BEARD_ROW=-1 BEARD_COL=0
   local er=$EYE_ROW s1=$E1S e2=$E2E
   local eyeC
   if (( er >= 0 )); then
@@ -823,7 +834,7 @@ pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
 
   # anchor row + center: mouth (KK+, anywhere below the eyes), then beak
   # (PP+, within three rows), then the chin fallback
-  local arow=-1 ac=$eyeC r i row j e
+  local arow=-1 ac=$eyeC r i row e
   for ((r=er+1; r<${#G[@]}; r++)); do
     row=${G[r]}
     for ((i=0; i<${#row}-1; i++)); do
@@ -847,6 +858,15 @@ pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
     done
   fi
   (( arow < 0 )) && { arow=$(( er + 2 )); ac=$eyeC; }
+  BEARD_ROW=$arow BEARD_COL=$ac
+}
+
+pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
+  local -n G=$1     # AROUND the mouth (gitagotchi-elders_1.html): a mustache
+  local blen=$2     # flanks the anchor, a tapered beard hangs below it
+  # the face was located on the pristine grid (pix_find_anchor, above)
+  local arow=${BEARD_ROW:--1} ac=${BEARD_COL:-0}
+  (( arow < 0 )) && return
 
   # never paint past the last body row: pix_trim was measured on the
   # authored grid, so anything hung below it gets sliced off at render
@@ -855,7 +875,7 @@ pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
 
   # mustache: two pixels either side of the mouth, at the anchor row — the
   # mouth cells between them stay clear, so the beard rings the mouth
-  local brow x
+  local brow x i j
   brow=${G[arow]}
   for x in $((ac - 3)) $((ac - 2)) $((ac + 1)) $((ac + 2)); do
     (( x < 0 || x >= ${#brow} )) && continue
@@ -1405,6 +1425,10 @@ pix_render() {
   (( body != 0 )) && pix_apply_body g "$body"
   EYE_ROW=-1
   [[ $tired == 1 || $bigeye == 1 || $brows == 1 || $beard != 0 ]] && pix_find_eyes g
+  # find the face while the grid is still pristine: the spectacle rim and the
+  # dilated pupil both paint K under the eyes, and the mouth hunt would take
+  # them for a chin (see pix_find_anchor)
+  (( beard != 0 )) && pix_find_anchor g
   (( bigeye )) && pix_apply_bigeyes g
   (( brows )) && pix_apply_brows g "$bigeye"
   [[ $specs == 1 ]] && pix_apply_specs g
@@ -1655,14 +1679,19 @@ pix_render_mini() { # species_id linguist_hex → PIXM[0..1] (visible width 6)
 # Majority downsample; eyes/accents win their block so the face survives.
 declare -A PIXHALFCACHE PIXHALFCACHE_H
 declare -a PIXH
-pix_render_half() { # species_id linguist_hex [frame] → PIXH[] (visible width 12)
-  local id=$1 hex=$2 frame=${3:-idle_1}
+pix_render_half() { # species_id linguist_hex [frame] [beard] → PIXH[] (visible width 12)
+  local id=$1 hex=$2 frame=${3:-idle_1} beard=${4:-0}
   case $frame in
     sick) frame=sick_1 ;; celebrate) frame=celebrate_1 ;;
     belly|stretch|young) frame=idle_1 ;;
   esac
   [[ -n ${PIXF[$id/$frame]:-} ]] || frame=idle_1
-  local ck="$id|$hex|$frame|$PIX_MODE"
+  [[ $frame == hibernate_* ]] && beard=0   # the cocoon hides the chin
+  # the beard is the one transform that survives the shrink — it's earned, and
+  # a guest turning up must not shave the host (the rest of the expression is
+  # detail the 12-px downsample would smear anyway). Its shade is per-pet, so
+  # PIX_BEARD_RGB rides in the key too, or a visitor would wear the host's.
+  local ck="$id|$hex|$frame|$beard|${PIX_BEARD_RGB:-}|$PIX_MODE"
   if [[ -n ${PIXHALFCACHE[$ck]:-} ]]; then
     local IFS=$'\n'; PIXH=(${PIXHALFCACHE[$ck]}); unset IFS
     return 0
@@ -1672,6 +1701,12 @@ pix_render_half() { # species_id linguist_hex [frame] → PIXH[] (visible width 
   pix_palette "$id" "$hex" 0
   local -a g m=()
   local IFS=$'\n'; g=(${PIXF[$id/$frame]}); unset IFS
+  if (( beard != 0 )); then
+    EYE_ROW=-1
+    pix_find_eyes g
+    pix_find_anchor g
+    pix_apply_beard g "$beard"
+  fi
   local trim r0 r1; trim=$(pix_trim "$id" "$frame"); r0=${trim%% *}; r1=${trim##* }
   local h=$(( r1 - r0 + 1 ))
   (( h < 2 )) && { r0=0; h=${#g[@]}; (( h < 1 )) && h=18; r1=$(( h - 1 )); }

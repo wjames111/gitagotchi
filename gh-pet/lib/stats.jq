@@ -38,6 +38,12 @@
   ([ $EV[] | select((.created_at | fromdateiso8601) <= $NOW) ]) as $EV
 | ([ $ST[] | select((.starred_at // null) == null or ((.starred_at | fromdateiso8601) <= $NOW)) ]) as $ST
 
+# who we are, for comparison against API payloads. GitHub logins are case-
+# insensitive, but $login arrives from the CLI in whatever casing was typed while
+# payloads carry the canonical spelling — compare downcased, or `gh-pet willjames`
+# fails to recognize its own "WillJames/repo" events as its own.
+| (($U.login // $login) | ascii_downcase) as $me
+
 # ── account & identity facts ─────────────────────────────────────────────────
 | ($U.created_at // "2020-01-01T00:00:00Z") as $created
 | (dago($created)) as $acct_days
@@ -157,16 +163,19 @@
     | select(.type == "IssueCommentEvent" or .type == "PullRequestReviewEvent"
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | select(dago(.created_at) < 7)
-    | select((.repo.name // "") | startswith($login + "/") | not) ] | length) as $outbound7
+    | select((.repo.name // "" | ascii_downcase) | startswith($me + "/") | not) ] | length) as $outbound7
 | ((7 * ($outbound7 | sqrt) + ([($FW | length), 20] | min)) | clamp(0; 100) | round) as $social
 # visitors: whoever you've interacted with in the LAST HOUR — their pets
-# drop by on the stage (owners of repos you commented/reviewed on)
+# drop by on the stage (owners of repos you commented/reviewed on).
+# You are never your own guest: the repo filter is only a proxy for that, so the
+# owner is checked against $me directly rather than trusting the proxy to hold.
 | ([ $EV[]
     | select(.type == "IssueCommentEvent" or .type == "PullRequestReviewEvent"
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | select(dago(.created_at) < (1 / 24))
-    | select((.repo.name // "") | startswith($login + "/") | not)
-    | ((.repo.name // "") | split("/")[0]) | select(. != "") ]
+    | select((.repo.name // "" | ascii_downcase) | startswith($me + "/") | not)
+    | ((.repo.name // "") | split("/")[0])
+    | select(. != "" and (ascii_downcase != $me)) ]
    | unique | .[0:3]) as $visitors
 # bond ledger: who you actually talk to — for every comment/review event,
 # the counterpart is the author of the issue/PR (person-level, so org-repo
@@ -178,7 +187,7 @@
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | (.payload.issue.user.login // .payload.pull_request.user.login
        // ((.repo.name // "") | split("/")[0]))
-    | select(. != "" and . != $login) ]
+    | select(. != "" and (ascii_downcase != $me)) ]
    | group_by(.) | sort_by(-length) | .[0:30]
    | map("\(.[0])|\(length)") | join(";")) as $comms
 
@@ -194,12 +203,22 @@
    else null end) as $health
 
 # 10 — happiness (plan.md §3.1); health weight redistributes when unknown
+# Weights favour the stats that actually MOVE on a day scale. fitness, clean and
+# health sit pinned at 100 for any healthy active account and wisdom grows on a
+# scale of years, so a fat weight on them is dead weight twice over: it anchors
+# the composite high AND it steals authority from the vitals the pet visibly
+# acts out. At 10/10/5/5 that inert block was 30% of happiness, which left
+# hunger's 20% weaker than the 30% of energy+social+curiosity that could offset
+# it — a pet could slide 82→54 hungry over 30h while the number moved 1 point
+# (the misery cap doesn't bite until <20, so nothing caught it). Halved to 15%
+# and the 15 points moved to hunger/energy/mood. Keep these as whole percents
+# summing to 100: panels.sh VX_COMP_W renders them as integer bars.
 | ({hunger: $hunger, energy: $energy, mood: $mood.v, fitness: $fitness, clean: $clean,
     curiosity: $curiosity, social: $social, wisdom: $wisdom}) as $S9
-| ((0.20*$hunger + 0.15*$energy + 0.20*$mood.v + 0.10*$fitness + 0.10*$clean
-    + 0.05*$curiosity + 0.10*$social + 0.05*$wisdom
-    + (if $health != null then 0.05*$health else 0 end))
-   / (if $health != null then 1.0 else 0.95 end) | round) as $happy_raw
+| ((0.28*$hunger + 0.18*$energy + 0.24*$mood.v + 0.05*$fitness + 0.05*$clean
+    + 0.05*$curiosity + 0.10*$social + 0.02*$wisdom
+    + (if $health != null then 0.03*$health else 0 end))
+   / (if $health != null then 1.0 else 0.97 end) | round) as $happy_raw
 | ($S9 + (if $health != null then {health: $health} else {} end)) as $SM
 # the misery cap listens to SURVIVAL needs only: hunger, energy, mood, clean,
 # health. The slow, aspirational stats (curiosity, wisdom, fitness, social)
