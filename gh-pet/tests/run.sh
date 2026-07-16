@@ -174,30 +174,34 @@ SNAPM=$(GITAGOTCHI_PRETEND_CLEAN=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLO
 assert_contains "$SNAPM" "146;100;60" "filthy stage shows pixel poop (its brown)"
 SNAPM2=$(GITAGOTCHI_PRETEND_CLEAN=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 if grep -qF "146;100;60" <<<"$SNAPM2"; then fail "spotless stage stays spotless"; else ok "spotless stage stays spotless"; fi
-echo "· wisdom beard: high wisdom grows chin pixels, shade from created_at + id"
-# the shade is identity: sha256("2019-03-14T09:00:00Z:3151702") → hue/sat/light,
-# pinned like the name — re-tuning the derivation re-dyes every beard in the wild
+echo "· wisdom beard: high wisdom grows chin pixels, shade from created_at + id,"
+echo "  rotated to CONTRAST the coat (the fixture's Rust coat → a blue beard)"
+# the shade is identity: sha256("2019-03-14T09:00:00Z:3151702") → sat/light and
+# a hue rotation away from the Rust coat. Pinned like the name — re-tuning the
+# derivation re-dyes every beard in the wild.
 SNAPB=$(GITAGOTCHI_PRETEND_WISDOM=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPB" "150;221;18" "sage pet wears the beard in its own shade"
+assert_contains "$SNAPB" "18;41;221" "sage pet wears the beard in its own shade"
 SNAPB2=$(GITAGOTCHI_PRETEND_WISDOM=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-if grep -qF "150;221;18" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
+if grep -qF "18;41;221" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
 
-# The point of the derivation is UNIQUENESS — the reason it was rewritten. The
-# old table quantized to 10 shades and two pets on one stage (wjames111/canac)
-# wore the same beard. These pin the properties, not just the fixture's value.
+# The derivation exists to be UNIQUE and to CONTRAST. Pin the PROPERTIES, not
+# just the fixture's value: the old 10-shade table put the same beard on two
+# pets standing together (wjames111/canac), and a free-running hue later put a
+# blue beard on canac's blue hamster at a redmean distance of 31 — invisible.
 BEARDU=$(
   source "$ROOT/lib/util.sh" 2>/dev/null
-  # same signup second, different accounts — created_at alone could not tell
-  # these apart, which is why the id is in the hash
-  printf 'sameinstant %s %s\n' "$(beard_color_for 2019-03-14T09:00:00Z 111)" \
-                               "$(beard_color_for 2019-03-14T09:00:00Z 222)"
+  RUST=$(pet_color_hex Rust)
+  # same signup second, different accounts — created_at alone cannot tell these
+  # apart, which is why the id is in the hash
+  printf 'sameinstant %s %s\n' "$(beard_color_for 2019-03-14T09:00:00Z 111 "$RUST")" \
+                               "$(beard_color_for 2019-03-14T09:00:00Z 222 "$RUST")"
   # stats.jq substitutes ONE constant date when user.json has not landed; that
   # used to dye every such pet identically
-  printf 'nodata %s %s\n' "$(beard_color_for 2020-01-01T00:00:00Z 4242)" \
-                          "$(beard_color_for 2020-01-01T00:00:00Z 9999)"
-  # same account, twice — the beard must never change color
-  printf 'stable %s %s\n' "$(beard_color_for 2018-05-31T20:44:17Z 39811085)" \
-                          "$(beard_color_for 2018-05-31T20:44:17Z 39811085)"
+  printf 'nodata %s %s\n' "$(beard_color_for 2020-01-01T00:00:00Z 4242 "$RUST")" \
+                          "$(beard_color_for 2020-01-01T00:00:00Z 9999 "$RUST")"
+  # same account + same coat, twice — the beard must not flicker between frames
+  printf 'stable %s %s\n' "$(beard_color_for 2018-05-31T20:44:17Z 39811085 "$RUST")" \
+                          "$(beard_color_for 2018-05-31T20:44:17Z 39811085 "$RUST")"
 )
 u_pair() { local l; l=$(grep "^$1 " <<<"$BEARDU"); [[ ${l#* } == *" "* ]] && printf '%s' "${l#* }"; }
 a=$(u_pair sameinstant); [[ ${a% *} != "${a#* }" ]] \
@@ -207,8 +211,48 @@ a=$(u_pair nodata); [[ ${a% *} != "${a#* }" ]] \
   && ok "pets awaiting user.json do not all share one beard" \
   || fail "pets awaiting user.json do not all share one beard ($a)"
 a=$(u_pair stable); [[ ${a% *} == "${a#* }" ]] \
-  && ok "a beard is stable: same account, same shade, forever" \
-  || fail "a beard is stable: same account, same shade, forever ($a)"
+  && ok "a beard is stable: same account + coat, same shade, forever" \
+  || fail "a beard is stable: same account + coat, same shade, forever ($a)"
+
+# A BEARD MUST NEVER VANISH INTO THE COAT. Sweep every linguist color against a
+# spread of identities and assert the rendered B never comes close to the
+# rendered O. Distances are redmean; canac's invisible beard scored 31, and 90
+# is the line below which two colors read as the same at pixel scale.
+BEARDC=$(
+  BASE_DIR="$ROOT/lib" SPRITE_DIR="$ROOT/sprites"
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/pixel.sh" 2>/dev/null
+  pix_db_load
+  dist() {
+    local a=$1 b=$2
+    IFS=';' read -r r1 g1 b1 <<<"$a"; IFS=';' read -r r2 g2 b2 <<<"$b"
+    local rm=$(( (r1 + r2) / 2 )) dr=$((r1-r2)) dg=$((g1-g2)) db=$((b1-b2))
+    local t=$(( (512 + rm) * dr * dr / 256 + 4 * dg * dg + (767 - rm) * db * db / 256 ))
+    (( t == 0 )) && { echo 0; return; }
+    local x=$t y=$(( (t + 1) / 2 ))
+    while (( y < x )); do x=$y; y=$(( (x + t / x) / 2 )); done
+    echo "$x"
+  }
+  worst=9999 wd=""
+  for lang in "${!LINGUIST[@]}"; do
+    hex=${LINGUIST[$lang]}
+    for k in 3 7 11 17; do
+      id=$(( 1000 + k * 7919 ))
+      seed_init "$id"; sp=${PIX_SPECIES[SEED[0] % ${#PIX_SPECIES[@]}]}
+      brgb=$(beard_color_for "201$((k%9))-03-14T09:00:00Z" "$id" "$hex")
+      PIX_BEARD_RGB=$brgb PC_KEY=""; pix_palette "$sp" "$hex" 0
+      d=$(dist "${PC[O]}" "${PC[B]}")
+      (( d < worst )) && { worst=$d; wd="$lang/$sp"; }
+    done
+  done
+  printf 'worst %s %s\n' "$worst" "$wd"
+)
+_w=$(sed -n 's/^worst \([0-9]*\) .*/\1/p' <<<"$BEARDC")
+_wd=$(sed -n 's/^worst [0-9]* \(.*\)/\1/p' <<<"$BEARDC")
+if [[ $_w =~ ^[0-9]+$ ]] && (( _w >= 90 )); then
+  ok "no beard ever vanishes into its coat (worst of every language: $_w at $_wd)"
+else
+  fail "a beard blends into its coat (distance ${_w:-none} at $_wd — under 90 reads as one color)"
+fi
 
 # The beard hunts for the face — the mouth is "the first KK+ run below the
 # eyes" — so it MUST read a pristine grid. An elder's spectacle rim (and a
@@ -266,7 +310,7 @@ BEARDN=$(
   BASE_DIR="$ROOT/lib" SPRITE_DIR="$ROOT/sprites"
   source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/pixel.sh" 2>/dev/null
   pix_db_load
-  PIX_MODE=T PIX_CAPTURE=1 PIX_BEARD_RGB="150;221;18"
+  PIX_MODE=T PIX_CAPTURE=1 PIX_BEARD_RGB="18;41;221"
   bald=0
   for id in "${PIX_SPECIES[@]}"; do
     for fr in idle_1 idle_2 eat_1 eat_2 eat_3 sick_1 sick_2 sleep_1 sleep_2 celebrate_1 celebrate_2; do
@@ -307,7 +351,7 @@ assert_contains "$BEARDN" "sleep_1 ..........DDOORROOBBBBDDDDBBBBOORROSDD.......
 SNAPH=$(GITAGOTCHI_PRETEND_WISDOM=95 GITAGOTCHI_PRETEND_VISITORS="octotest" \
   COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 \
   "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPH" "150;221;18" "a hosting pet keeps the beard it earned (half scale)"
+assert_contains "$SNAPH" "18;41;221" "a hosting pet keeps the beard it earned (half scale)"
 echo "· curiosity (≥75): the pet holds and reads a book (gitagotchi-reading.html)"
 SNAPBK=$(GITAGOTCHI_PRETEND_VIG=books COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 assert_contains "$SNAPBK" "47;95;176"   "reading: the held book's blue cover renders"
