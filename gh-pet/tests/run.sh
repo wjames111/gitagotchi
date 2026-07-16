@@ -12,6 +12,14 @@ assert_contains() { # haystack needle label
   if grep -qF -- "$2" <<<"$1"; then ok "$3"; else fail "$3 (missing: $2)"; fi
 }
 
+# clock pin: the pet lives on the wall clock — it SLEEPS at night and the
+# feed groups by local date. Derive at local noon wherever/whenever the
+# suite runs by picking the TZ where it is 12:xx right now (00:30 UTC on a
+# CI runner once put the whole suite to bed: no spear, no props, no badge
+# blink, and "today" had become yesterday). POSIX sign: TZ=UTC-3 = UTC+3h.
+_h=$(date -u +%H); _h=${_h#0}; _h=${_h:-0}
+export TZ="UTC$(( _h - 12 ))"
+
 ./make_fixtures.sh fixtures >/dev/null
 
 export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8   # snapshots assert tier-B glyphs
