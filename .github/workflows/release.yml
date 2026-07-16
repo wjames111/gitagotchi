@@ -23,9 +23,16 @@ jobs:
       - name: gate on the offline suite
         run: gh-pet/tests/run.sh
 
-      - name: version from the tag
+      - name: version from the tag (must match util.sh VERSION)
         id: v
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          code=$(sed -n 's/^VERSION="\(.*\)"/\1/p' gh-pet/lib/util.sh)
+          if [[ $v != "$code" ]]; then
+            echo "::error::tag v$v disagrees with util.sh VERSION=$code — bump VERSION before tagging" >&2
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: build the .deb
         run: packaging/build-deb.sh "${{ steps.v.outputs.version }}" dist
