@@ -90,18 +90,25 @@ badge_render() { # assoc_name → SVG on stdout
   local pw=${#G0[0]} ph=${#G0[@]}
   local sc=$BADGE_SCALE
   local sw=$((pw * sc)) sh=$((ph * sc))
-  local W=$((sw + 64)); (( W < 300 )) && W=300
+
+  # the identity line — hibernation/sleep named, like the terminal card.
+  # Hibernation supersedes sleep: a months-quiet pet is also technically
+  # "asleep" (>6h), but only one dormancy word belongs on the card.
+  local sub="the ${BP[SPECIES_LABEL]:-${BP[SPECIES]}} · ${BP[STAGE]:-?} · @${BP[LOGIN]:-?}"
+  [[ ${BP[STAGE]:-} == egg ]] && sub="an egg · @${BP[LOGIN]:-?}"
+  if [[ ${BP[HIB]:-0} == 1 ]]; then sub+=" · hibernating"
+  elif [[ ${BP[SLEEPING]:-0} == 1 ]]; then sub+=" · asleep"; fi
+
+  # the card fits the WIDEST element — often the subtitle, not the sprite;
+  # monospace advance ≈ 0.6em, so ~6.6px per char at font-size 11 (+pad).
+  # Undersizing clipped the identity line off the right edge on long logins.
+  local sub_w=$(( ${#sub} * 66 / 10 + 34 ))
+  local W=$((sw + 64)); (( W < 300 )) && W=300; (( W < sub_w )) && W=$sub_w
   local sx=$(( (W - sw) / 2 )) sy=22
   local name_y=$((sy + sh + 30))
   local sub_y=$((name_y + 19))
   local bar_y=$((sub_y + 16))
   local H=$((bar_y + 34))
-
-  # the identity line — hibernation/sleep named, like the terminal card
-  local sub="the ${BP[SPECIES_LABEL]:-${BP[SPECIES]}} · ${BP[STAGE]:-?} · @${BP[LOGIN]:-?}"
-  [[ ${BP[STAGE]:-} == egg ]] && sub="an egg · @${BP[LOGIN]:-?}"
-  [[ ${BP[HIB]:-0} == 1 ]] && sub+=" · hibernating"
-  [[ ${BP[SLEEPING]:-0} == 1 ]] && sub+=" · asleep"
 
   # happiness meter wears the vitals gradient colors
   local hp=${BP[HAPPINESS]:-0} bcol="#3fb950"
