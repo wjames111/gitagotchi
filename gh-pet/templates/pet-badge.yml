@@ -1,9 +1,21 @@
 # gitagotchi badge — keeps pet.svg in your profile README current.
 #
-# Drop this file into your profile repo (<login>/<login>) at
-# .github/workflows/pet-badge.yml, then embed the pet:
+# SETUP (two one-time steps):
+#   1. Drop this file into your profile repo (<login>/<login>) at
+#      .github/workflows/pet-badge.yml, and embed the pet in the README:
 #
-#     ![my gitagotchi](pet.svg)
+#          ![my gitagotchi](pet.svg)
+#
+#   2. This workflow commits pet.svg back to your repo, which needs a
+#      read-WRITE Actions token. New repos default to read-only, so the
+#      push step 403s until you flip it — do ONE of:
+#        · GitHub UI: Settings → Actions → General → Workflow permissions
+#          → "Read and write permissions" → Save
+#        · gh CLI: gh api -X PUT \
+#            repos/OWNER/OWNER/actions/permissions/workflow \
+#            -f default_workflow_permissions=write
+#      (the `permissions: contents: write` below alone isn't enough when the
+#       repo default is read-only — the repo setting is the ceiling).
 #
 # Why cron AND push: there is no cross-repo "this user did something"
 # trigger, and the pet changes even when GitHub doesn't — hunger decays,
@@ -15,7 +27,8 @@
 name: pet badge
 on:
   schedule:
-    - cron: "17 */6 * * *"   # every 6h — the wall-clock heartbeat
+    - cron: "23 * * * *"   # hourly — the wall-clock heartbeat (public repos
+                           # run Actions free; the guard skips no-op commits)
   push:
     branches: [main]
   workflow_dispatch:
