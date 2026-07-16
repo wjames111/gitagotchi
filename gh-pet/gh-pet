@@ -23,9 +23,17 @@ if (( BASH_VERSINFO[0] < 4 )); then
   exit 1
 fi
 
+# resolve to the real script dir, following symlinks. A link target may be
+# relative (Homebrew's install_symlink writes ../Cellar/…; the .deb uses an
+# absolute target) — a relative target resolves against the LINK's directory,
+# not $PWD, so rebase it before the next hop or BASE_DIR lands in the void.
 SRC=${BASH_SOURCE[0]}
-while [[ -L $SRC ]]; do SRC=$(readlink "$SRC"); done
-BASE_DIR=$(cd "$(dirname "$SRC")" && pwd)
+while [[ -L $SRC ]]; do
+  _dir=$(cd -P "$(dirname "$SRC")" && pwd)
+  SRC=$(readlink "$SRC")
+  [[ $SRC == /* ]] || SRC="$_dir/$SRC"
+done
+BASE_DIR=$(cd -P "$(dirname "$SRC")" && pwd)
 LIB_DIR="$BASE_DIR/lib"
 SPRITE_DIR="$BASE_DIR/sprites"
 
