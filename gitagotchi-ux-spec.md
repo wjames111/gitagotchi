@@ -180,12 +180,23 @@ menu; there is no other menu.
 ### 5.1 First run / onboarding
 
 There is no setup wizard — auth resolution *is* the onboarding, rendered as theater.
-Three beats, ~4 seconds total, any key skips ahead.
+Four beats, ~6 seconds total, any key skips ahead.
 
-**Beat A — boot (auth resolution made visible):**
+**Beat 0 — power-on (the neon sign lights up):**
+
+The `gitagotchi` wordmark ignites like a real neon sign — the terminal port of
+`gitagotchi-neon.html`. Each letter buzzes alight in sequence (a dark pre-ignition
+flicker, a white-hot ignition flash, then a settle), lit blue→purple across the sign,
+then holds on a steady hum. The sign **stays lit** while Beat A's boot lines cascade in
+beneath it — one screen, not a separate console. Colour terminals ≥ 81 cols only;
+anywhere smaller (or ASCII), Beat 0 is skipped and Beat A opens on a plain centred
+`gitagotchi` title instead. First-run only, or on demand via `--onboarding`.
+
+**Beat A — boot (auth resolution made visible), below the lit sign:**
 
 ```
-                       gitagotchi
+        ███  █  ████  ███  ████  ████ ████  █   █  █      ← the sign, still humming
+        ...  ...  the GITAGOTCHI wordmark stays lit  ...
 
            ✓ found gh token           @will
            ✓ fetching account         id 3151702
@@ -193,16 +204,26 @@ Three beats, ~4 seconds total, any key skips ahead.
            ● first sight…
 ```
 
-Each line lands as its call completes. If auth falls through to unauthenticated, the
-first line reads `◦ no token — public data only` and boot continues; no error, no prompt.
+Each line lands as its call completes, appearing directly under the wordmark. If auth
+falls through to unauthenticated, the first line reads `◦ no token — public data only`
+and boot continues; no error, no prompt. (On a plain terminal the sign is a centred
+`gitagotchi` text title instead, with the same lines beneath.)
 
-**Beat B — the egg (6 ticks):**
+**Beat B — the egg cracks open (8 ticks), centred on the stage:**
+
+The pixel egg — the same half-block sprite the pet is drawn in, hue-shifted through the
+account's language palette — sways idle for a few ticks, then splits `crack_1 → crack_2`
+as a fracture opens across the shell. Centred by the sprite's true width. On a
+non-truecolor / ASCII terminal it falls back to the little `.-.` / `( ✦ )` / `` `-' ``
+egg, tilting and cracking the same way.
 
 ```
-                         .-.
-                        ( ✦ )          the egg tilts left,
-                         `-'           right, left · a hairline
-                                       crack appears on tick 5
+                        ▄▄▄▄
+                      ▄██▓▓██▄            the egg wobbles, then a
+                     ████▓█████           hairline crack forks open
+                     ██████████           across the shell
+                      ████████
+                       ██████
                        ( tap… )
 ```
 
@@ -214,15 +235,19 @@ first line reads `◦ no token — public data only` and boot continues; no erro
                        (   )~
                         ˘ ˘
 
-                   ── Zeruko! ──
+                 Hi my name is Zeruko
              the axolotl · adult · est. 2014
 ```
 
 …then the frame dissolves into the main screen (banner text slides down into the title
 bar). Because first-run-ness is inferred from an empty cache, the reveal **replays on any
 new machine** — that's the invariant working *for* the UX: your pet hatching again on a
-new laptop is a feature, and it proves nothing was stored. For accounts genuinely younger
-than 7 days, Beat C never comes: the egg is the pet (§5.9).
+new laptop is a feature, and it proves nothing was stored.
+
+For accounts genuinely younger than 7 days there is no crack and no reveal — the egg is
+the pet (§5.9). Instead Beat B becomes a short **egg beat**: the pixel egg settles in,
+wobbling idle beneath `a quiet egg · hatches in Nd`, with the name and species still
+secret. It then hands off to the main screen, which holds the same egg.
 
 ### 5.2 Main screen — anatomy
 

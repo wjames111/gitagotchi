@@ -13,6 +13,7 @@
 #        --fixtures D derive the pet from recorded API fixtures (offline)
 #        --demo X     stage an animation on a loop: wake | eat | celebrate | tired | wired | curious | social | reviewer | skinny | chubby | hatch | love | sleep | fit | unfit | stretcher | fetch | messy | wise
 #        --panel P    with --snapshot: vitals | activity | friends | feed
+#        --onboarding replay the first-run hatch theater even if cached (§5.1)
 
 # bash ≥ 4 required (plan.md §12); macOS ships 3.2 — hop to brew bash
 if (( BASH_VERSINFO[0] < 4 )); then
@@ -53,7 +54,7 @@ have jq   || die "jq is required"
 have curl || die "curl is required"
 
 # ── args ────────────────────────────────────────────────────────────────────
-OPT_ASCII=0 OPT_NOSCRAPE=0 OPT_NOLINKS=0 OPT_SNAPSHOT=0
+OPT_ASCII=0 OPT_NOSCRAPE=0 OPT_NOLINKS=0 OPT_SNAPSHOT=0 OPT_ONBOARD=0
 FIXDIR="" CMD=pet ARG_LOGIN="" CMP_LOGIN="" DENSE_FORCE="" DEMO="" PANEL=""
 while (( $# )); do
   case $1 in
@@ -68,7 +69,8 @@ while (( $# )); do
     --diag) CMD=diag ;;
     --demo) shift; DEMO=${1:-wake} ;;
     --panel) shift; PANEL=${1:-} ;;   # with --snapshot: vitals|activity|friends|feed
-    --help|-h) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --onboarding) OPT_ONBOARD=1 ;;    # force the §5.1 hatch theater on next run
+    --help|-h) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     compare) CMD=compare; shift; CMP_LOGIN=${1:-}; [[ -n $CMP_LOGIN ]] || die "compare needs a login" ;;
     badge) CMD=badge ;;
     -*) die "unknown flag: $1" ;;
@@ -199,13 +201,113 @@ center() { # text → centered line for current COLS
   printf '%s%s\n' "$(repeat_str " " "$pad")" "$t"
 }
 
+# center pre-coloured sprite lines by their TRUE visible width $1 (byte length
+# would count the SGR escapes and shove them off-centre); $2 nudges horizontally
+center_wide() { # width nudge line...
+  local w=$1 nudge=$2; shift 2
+  local pad=$(( (COLS - w) / 2 + nudge )); (( pad < 0 )) && pad=0
+  local sp; sp=$(repeat_str " " "$pad")
+  local l; for l in "$@"; do printf '%s%s\n' "$sp" "$l"; done
+}
+
+# ── Beat 0 (§5.1): the neon wordmark powers on — a faithful terminal port of
+#    gitagotchi-neon.html. Same 7-tall pixel font; each letter ignites in
+#    sequence (pre-ignition buzz → white-hot flash → settle), lit blue→purple
+#    across the sign. Colour terminals only; plain title otherwise.
+declare -A NEON_GLYPH=(
+  [G]="01111100 11000110 11000000 11001110 11000110 11000110 01111100"
+  [I]="1111100 0011000 0011000 0011000 0011000 0011000 1111100"
+  [T]="1111111 0011100 0011100 0011100 0011100 0011100 0011100"
+  [A]="0111110 1100011 1100011 1111111 1100011 1100011 1100011"
+  [O]="0111110 1100011 1100011 1100011 1100011 1100011 0111110"
+  [C]="0111110 1100011 1100000 1100000 1100000 1100011 0111110"
+  [H]="1100011 1100011 1100011 1111111 1100011 1100011 1100011"
+)
+# tube colour for a letter at fractional position tp (0..100): blue #79c0f2 →
+# purple #bc8cf2, scaled by brightness sp (0..100); hot=1 forces the white core
+neon_ink() { # tp sp hot → REPLY=SGR escape
+  if (( $3 )); then REPLY=$'\e[38;2;240;244;255m'; return; fi
+  if [[ $PIX_MODE == 256 ]]; then
+    local c=75; (( $1 >= 50 )) && c=141      # blue vs purple half
+    (( $2 <= 12 )) && c=236                   # unlit tube: faint grey
+    REPLY=$'\e[38;5;'"$c"'m'; return
+  fi
+  local r=$(( (121 + 67 * $1 / 100) * $2 / 100 ))
+  local g=$(( (192 - 52 * $1 / 100) * $2 / 100 ))
+  local b=$(( 242 * $2 / 100 ))
+  REPLY=$'\e[38;2;'"$r;$g;$b"'m'
+}
+power_on() {
+  [[ $PIX_MODE == T || $PIX_MODE == 256 ]] || return 1   # else: plain title
+  local word="GITAGOTCHI" gap=1 rows=7
+  local -a lx lw lt lch                                   # x, width, hue%, char
+  local i x=0 ch
+  for (( i=0; i<${#word}; i++ )); do
+    ch=${word:i:1}; local -a g=(${NEON_GLYPH[$ch]}); local w=${#g[0]}
+    lch[i]=$ch; lx[i]=$x; lw[i]=$w
+    x=$(( x + w + gap ))
+  done
+  local W=$(( x - gap ))
+  (( COLS < W || LINES < rows + 6 )) && return 1          # too small for the sign
+  for (( i=0; i<${#word}; i++ )); do lt[i]=$(( (lx[i] + lw[i] / 2) * 100 / W )); done
+  local left=$(( (COLS - W) / 2 )); (( left < 0 )) && left=0
+  local pad; pad=$(repeat_str " " "$left")
+  # leave 5 rows under the sign for the boot lines that cascade in beneath it
+  local top=$(( (LINES - rows - 5) / 2 )); (( top < 1 )) && top=1
+
+  # ignition schedule: onAt[i] = 6 + 3i frames @ ~60ms ≈ 0.36 + 0.18i s (§5.1)
+  local -a onAt; for (( i=0; i<${#word}; i++ )); do onAt[i]=$(( 6 + 3 * i )); done
+  local last=$(( onAt[${#word}-1] + 8 ))
+  printf '\e[2J\e[H'
+  local f r
+  for (( f=0; f<=last; f++ )); do
+    printf '\e[H'
+    local t; for (( t=0; t<top; t++ )); do printf '\e[K\n'; done
+    for (( r=0; r<rows; r++ )); do
+      local line="$pad"
+      for (( i=0; i<${#word}; i++ )); do
+        local -a g=(${NEON_GLYPH[${lch[i]}]}); local rowbits=${g[r]}
+        # per-frame brightness for this letter (mirrors the HTML level machine)
+        local sp=100 hot=0
+        if (( f < onAt[i] )); then
+          if (( RANDOM % 100 < 12 )); then sp=$(( 55 + RANDOM % 30 )); else sp=6; fi
+        elif (( f < onAt[i] + 2 )); then sp=100 hot=1     # ignition flash
+        else (( RANDOM % 100 < 3 )) && sp=$(( 25 + RANDOM % 40 ))  # rare hum flicker
+        fi
+        neon_ink "${lt[i]}" "$sp" "$hot"; local ink=$REPLY
+        local c bit
+        for (( c=0; c<${lw[i]}; c++ )); do
+          bit=${rowbits:c:1}
+          if [[ $bit == 1 ]]; then line+="${ink}█"; else line+=" "; fi
+        done
+        (( i < ${#word}-1 )) && line+="$(repeat_str " " "$gap")"
+      done
+      printf '%s\e[0m\e[K\n' "$line"
+    done
+    # caption: powering on… until the last tube settles, then a steady hum
+    local cap="powering on…"; (( f >= last - 6 )) && cap="humming ${G_SPARK}"
+    printf '\e[K\n'; center "$cap"; printf '\e[K'
+    read_key 0.06; [[ -n $KEY ]] && break
+  done
+  read_key 0.5   # hold the lit sign a beat, then the boot lines cascade below it
+  # park the cursor just under the sign and wipe the caption + everything below,
+  # leaving the wordmark lit; onboarding prints the auth lines from here
+  printf '\e[%d;1H\e[J' "$(( top + rows + 2 ))"
+  return 0
+}
+
 # ── onboarding (§5.1): auth resolution IS the onboarding, rendered as theater ─
 onboarding() {
   local skip=0 k
-  printf '\e[2J\e[H'
-  echo; echo; echo
-  center "gitagotchi"
-  echo
+  # Beat 0 — the neon sign powers on; on success the boot lines cascade in *below*
+  # the still-lit wordmark (cursor is already parked there). On a plain or narrow
+  # terminal power_on draws nothing, so fall back to a centred text title.
+  if ! power_on; then
+    printf '\e[2J\e[H'
+    echo; echo; echo
+    center "gitagotchi"
+    echo
+  fi
   if [[ $AUTH_MODE == none ]]; then
     center "${G_DOT_NONE} no token — public data only          "
   else
@@ -221,30 +323,78 @@ onboarding() {
   center "${G_DOT_OK} deriving pet             seed ${seedhex}…"
   center "● first sight…"
   read_key 0.9; k=$KEY; [[ -n $k ]] && skip=1
-  # beat B — the egg (6 ticks); a key skips ahead
+  # beat B — the egg cracks open, centred on the stage (a key skips ahead). The
+  # pixel egg wobbles, then splits crack_1 → crack_2 (§5.9); ASCII egg otherwise.
   if (( ! skip )) && [[ ${S[STAGE]} != egg ]]; then
-    local t tint; tint=$(fg "${S[COLOR256]:-180}")
-    for t in 0 1 2 3 4 5; do
-      printf '\e[2J\e[H'; echo; echo; echo; echo
-      local tilt=0
-      (( t % 4 == 1 )) && tilt=-1; (( t % 4 == 3 )) && tilt=1; (( t == 5 )) && tilt=2
-      egg_frame "$tilt" "$tint"
-      local l; for l in "${SPCOMP_COL[@]}"; do center "$l"; done
+    local t use_pix=0
+    if [[ -n $PIX_MODE && -n ${PIXF[egg/idle_1]:-} ]]; then
+      use_pix=1; pix_palette egg "${S[COLOR_HEX]:-#dea584}" 0
+    fi
+    local tint; tint=$(fg "${S[COLOR256]:-180}")
+    local -a eseq=(idle_1 idle_1 idle_1 idle_1 idle_1 crack_1 crack_2 crack_2)
+    local -a ewob=(0 -1 0 1 0 0 -1 1)             # idle sway, then a splitting shake
+    for t in "${!eseq[@]}"; do
+      printf '\e[2J\e[H'
+      local vtop l ew
+      if (( use_pix )); then
+        pix_render egg "${eseq[t]}" 0 0 0
+        vtop=$(( (LINES - PIXOUT_H - 3) / 2 )); (( vtop < 0 )) && vtop=0
+        for (( l=0; l<vtop; l++ )); do echo; done
+        center_wide "$PIXOUT_W" "${ewob[t]}" "${PIXOUT[@]}"
+      else
+        local tilt=${ewob[t]}; [[ ${eseq[t]} == crack_* ]] && tilt=2
+        egg_frame "$tilt" "$tint"
+        ew=0; for l in "${SPCOMP_PLAIN[@]}"; do (( ${#l} > ew )) && ew=${#l}; done
+        vtop=$(( (LINES - ${#SPCOMP_PLAIN[@]} - 3) / 2 )); (( vtop < 0 )) && vtop=0
+        for (( l=0; l<vtop; l++ )); do echo; done
+        center_wide "$ew" "${ewob[t]}" "${SPCOMP_COL[@]}"
+      fi
       echo; center "( tap… )"
-      read_key 0.25; k=$KEY; [[ -n $k ]] && { skip=1; break; }
+      read_key 0.28; k=$KEY; [[ -n $k ]] && { skip=1; break; }
     done
-    # beat C — reveal
+    # beat C — reveal (centred by the pet's true width)
     if (( ! skip )); then
-      printf '\e[2J\e[H'; echo; echo
-      center "${G_SPARK}   \\|/   ${G_SPARK}"
+      printf '\e[2J\e[H'
       ANIM_FRAME=idle_1
       pet_compose S idle_1 0 0
-      local l; for l in "${PET_LINES[@]}"; do center "$l"; done
+      local vtop l; vtop=$(( (LINES - PET_H - 5) / 2 )); (( vtop < 0 )) && vtop=0
+      for (( l=0; l<vtop; l++ )); do echo; done
+      center "${G_SPARK}   \\|/   ${G_SPARK}"
+      center_wide "$PET_W" 0 "${PET_LINES[@]}"
       echo
-      center "── ${S[NAME]}! ──"
+      center "Hi my name is ${S[NAME]}"
       center "the ${S[SPECIES_LABEL]:-${S[SPECIES]}} · ${S[STAGE]} · est. ${S[CREATED_YEAR]}"
       read_key 1.6
     fi
+  elif (( ! skip )); then
+    # young account (§5.9): the egg can't hatch yet, so instead of a reveal it
+    # just settles in, wobbling — no crack, and name/species stay secret ('?')
+    # until hatch day. The main screen then holds the same egg.
+    local t use_pix=0
+    if [[ -n $PIX_MODE && -n ${PIXF[egg/idle_1]:-} ]]; then
+      use_pix=1; pix_palette egg "${S[COLOR_HEX]:-#dea584}" 0
+    fi
+    local tint; tint=$(fg "${S[COLOR256]:-180}")
+    local hd=$(( 7 - ${S[ACCT_DAYS]:-0} )); (( hd < 1 )) && hd=1
+    local -a ewob=(0 -1 0 1 0 1 0 -1)            # a gentle idle sway, no crack
+    for t in "${!ewob[@]}"; do
+      printf '\e[2J\e[H'
+      local vtop l ew
+      if (( use_pix )); then
+        pix_render egg idle_1 0 0 0
+        vtop=$(( (LINES - PIXOUT_H - 4) / 2 )); (( vtop < 0 )) && vtop=0
+        for (( l=0; l<vtop; l++ )); do echo; done
+        center_wide "$PIXOUT_W" "${ewob[t]}" "${PIXOUT[@]}"
+      else
+        egg_frame "${ewob[t]}" "$tint"
+        ew=0; for l in "${SPCOMP_PLAIN[@]}"; do (( ${#l} > ew )) && ew=${#l}; done
+        vtop=$(( (LINES - ${#SPCOMP_PLAIN[@]} - 4) / 2 )); (( vtop < 0 )) && vtop=0
+        for (( l=0; l<vtop; l++ )); do echo; done
+        center_wide "$ew" "${ewob[t]}" "${SPCOMP_COL[@]}"
+      fi
+      echo; center "a quiet egg · hatches in ${hd}d"
+      read_key 0.3; k=$KEY; [[ -n $k ]] && { skip=1; break; }
+    done
   fi
 }
 
@@ -736,6 +886,7 @@ fi
 # ── bootstrap data ──────────────────────────────────────────────────────────
 first_run=0
 [[ ! -f $CACHE_ROOT/$TARGET/state.env ]] && first_run=1
+(( OPT_ONBOARD )) && first_run=1   # --onboarding: replay the hatch theater on demand
 
 if (( OPT_SNAPSHOT )) || [[ $CMD == compare && $OPT_SNAPSHOT == 1 ]]; then
   fetch_all "$TARGET" "$SELF" >/dev/null 2>&1
