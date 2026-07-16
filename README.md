@@ -13,9 +13,9 @@ consistently — ten stats, each named to the GitHub signal it reads, feed a sin
 score with a misery cap. Every account already has a pet; here are a few:
 
 <p align="center">
-  <img height="150" alt="Tavuplam, @wjames111's pet" src="assets/pet-wjames111.svg">
-  <img height="150" alt="Gedogru, @torvalds's pet" src="assets/pet-torvalds.svg">
-  <img height="150" alt="Meplezit, @octocat's pet" src="assets/pet-octocat.svg">
+  <img height="150" alt="Fafasho, @wjames111's pet" src="assets/pet-wjames111.svg">
+  <img height="150" alt="Zeflofli, @torvalds's pet" src="assets/pet-torvalds.svg">
+  <img height="150" alt="Memeku, @octocat's pet" src="assets/pet-octocat.svg">
 </p>
 
 Species, name, color, and markings are a pure function of your numeric account id and top

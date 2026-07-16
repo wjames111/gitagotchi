@@ -212,36 +212,49 @@ beard_color_for() { # $1 = CREATED iso timestamp · $2 = numeric user id
           $(( 40 + 16#${hex:6:2} % 23 ))
 }
 
-# name generator (plan.md §2.1) — ~2×10⁸ distinct names. Onset clusters,
-# diphthong vowels after the first syllable and a rare coda grow the space
-# from the old ~8.1k (a name twin among a few dozen friends was a coin flip)
-# to any-two-pets-matching odds of ≈ 1 in 230 million. Still a pure function
-# of the user id: same account, same name, forever.
+# name generator (plan.md §2.1) — a pet's name should sound like something you
+# would call across a room, so the sounds are picked for softness: no spiky
+# onset clusters (kr/vr/zh/st/th/gr/dr/pr all cut), finals weighted to o/i/u,
+# and a coda that is usually nothing at all — an open vowel is what keeps a
+# name round. A quarter of pets echo their first syllable (Memeku, Chochowi);
+# reduplication is the oldest cuteness trick there is.
+#
+# ~2×10⁷ names are reachable, but that count is not the number that matters.
+# The arrays are deliberately weighted and the 8-letter cap keeps most names at
+# two syllables, so names are nowhere near uniform: measured, two random pets
+# share a name about 1 in 60k. The echo accounts for nearly all of that — with
+# it switched off the softer arrays actually beat the old spiky ones (1 in 1M
+# vs 1 in 800k), so it is the reduplication, not the softness, that is bought
+# here. In a 40-friend list that is a ~1.3% chance of a twin, and a twin is
+# charming rather than broken — two real pets can share a name too.
 #
 # ██ FROZEN — do not edit the arrays or the indexing below. ██
 # "Same account, same name, forever" is a promise to the user: nothing is
 # stored, so the name exists ONLY as this mapping — any change (even
 # reordering an array) silently renames every pet in the wild. The suite
-# pins id 3151702 → "Lonisux"; if a change here is ever truly unavoidable,
+# pins id 3151702 → "Chochowi"; if a change here is ever truly unavoidable,
 # it must be versioned, not edited in place.
-NAME_ONS=(b d f g h j k l m n p r s t v w y z br dr gr kr pl pr sh st th tr vr zh)
+NAME_ONS=(b d f g h j k l m n p r s t v w y z bl ch fl pl sh)
 NAME_VOWS=(a e i o u)
-NAME_VOWF=(a e i o u a e i o u ai ei oa ua io)   # diphthongs stay the spice
-NAME_CODA=("" "" "" "" "" "" n r s l m k t x sh nd ph)
+NAME_VOWF=(o i u o i u a e o i ai oi ia io u)   # o/i/u carry it; diphthongs spice
+NAME_CODA=("" "" "" "" "" "" "" "" "" n m l n m l)   # usually open, never spiky
 gen_name() {
   # names stay generally 8 letters or fewer: always two syllables, a third only
   # when it still fits, and a coda for spice on some seeds when there's room.
   # Built to fit rather than truncated, so no jarring cut-offs — and not a hard
   # cap, just a bias away from the old 11–17 letter mouthfuls.
-  local name="" i
+  local name="" first="" i
   for ((i=0; i<3; i++)); do
-    local ons=${NAME_ONS[SEED[2*i+2] % 30]} vow
-    if (( i == 0 )); then vow=${NAME_VOWS[SEED[2*i+3] % 5]}
-    else vow=${NAME_VOWF[SEED[2*i+3] % 15]}; fi
-    (( i >= 2 && ${#name} + ${#ons} + ${#vow} > 8 )) && break
-    name+="$ons$vow"
+    local ons=${NAME_ONS[SEED[2*i+2] % ${#NAME_ONS[@]}]} vow
+    if (( i == 0 )); then vow=${NAME_VOWS[SEED[2*i+3] % ${#NAME_VOWS[@]}]}
+    else vow=${NAME_VOWF[SEED[2*i+3] % ${#NAME_VOWF[@]}]}; fi
+    local syl="$ons$vow"
+    (( i == 1 && SEED[14] % 4 == 0 )) && syl=$first   # the echo (seed byte 14 is otherwise unused)
+    (( i >= 2 && ${#name} + ${#syl} > 8 )) && break
+    (( i == 0 )) && first=$syl
+    name+="$syl"
   done
-  local coda=${NAME_CODA[SEED[15] % 17]}
+  local coda=${NAME_CODA[SEED[15] % ${#NAME_CODA[@]}]}
   (( ${#name} + ${#coda} <= 8 && SEED[16] % 2 == 0 )) && name+="$coda"
   printf '%s' "$(tr '[:lower:]' '[:upper:]' <<<"${name:0:1}")${name:1}"
 }

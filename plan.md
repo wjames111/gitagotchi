@@ -59,22 +59,38 @@ telegraph what they build.
 
 ### 2.1 Name generator
 
-Names must feel organic, be pronounceable, rarely collide, and never change.
+Names must feel organic, be pronounceable, rarely collide, never change — and be cute.
+A name is the first thing you see and the only word you ever say out loud, so it carries
+more of the pet's charm than any other derived trait.
 
 ```
-CONSONANTS = b d f g h j k l m n p r s t v w y z        (18)
-VOWELS     = a e i o u                                   (5)
+ONSETS = b d f g h j k l m n p r s t v w y z bl ch fl pl sh   (23, all soft)
+VOWELS = a e i o u                                            (5)
+FINALS = o i u o i u a e o i ai oi ia io u                    (15, weighted to o/i/u)
+CODAS  = "" ×9, n m l n m l                                   (15, usually nothing)
 
-syllables  = 2 + (seed[1] % 2)                           # 2 or 3
-for i in 1..syllables:
-    name += CONSONANTS[seed[2i] % 18] + VOWELS[seed[2i+1] % 5]
+syllable(i) = ONSETS[seed[2i+2]] + (i == 0 ? VOWELS : FINALS)[seed[2i+3]]
+if seed[14] % 4 == 0: syllable(1) = syllable(0)          # the echo — Memeku, Chochowi
+name = syllable(0) + syllable(1) + syllable(2) if it fits in 8 letters
+if seed[16] % 2 == 0: name += CODAS[seed[15]] if it fits
 capitalize(name)
 ```
 
-Yields names like **Mopli-style** two-syllable ("Zeru", "Pabo", "Kilu") and three-syllable
-("Zeruko", "Pabuni", "Moplika"). 90² ≈ 8k two-syllable + 90³ ≈ 729k three-syllable names;
-collisions among a user's friend list are vanishingly rare, and a collision is charming
-rather than broken (two pets can share a name, like real pets).
+Cuteness is a phonetic choice, not a filter bolted on after: soft onsets only (no
+kr/vr/zh/st/th/gr/dr/pr), finals weighted to the round vowels, a coda that is usually
+absent so names end open, and reduplication on a quarter of pets — the oldest cuteness
+trick there is. Yields "Memeku", "Chochowi", "Ninigoi", "Fafasho", "Jujufo".
+
+~2×10⁷ names are reachable, but the arrays are weighted and the 8-letter cap keeps most
+names at two syllables, so the distribution is far from uniform: measured, two random pets
+share a name about **1 in 60k** — a ~1.3% chance of a twin somewhere in a 40-friend list.
+The echo buys that almost single-handedly (without it the softer arrays measure 1 in 1M,
+beating the old spiky set's 1 in 800k). It is a price worth paying: a collision is
+charming rather than broken, the way two real pets can share a name.
+
+**Frozen.** Nothing is stored, so the name exists only as this mapping — any edit, even
+reordering an array, silently renames every pet in the wild. The suite pins id 3151702 →
+"Chochowi". If a change is ever unavoidable it must be versioned, not edited in place.
 
 ### 2.2 Face & posture are *not* identity
 

@@ -49,8 +49,8 @@ SNAP2=$("$ROOT/gh-pet" --fixtures fixtures --snapshot --cozy 2>&1)
 NAME2=$(grep -o '^┌─ [A-Z][a-z]*' <<<"$SNAP2" | head -1)
 if [[ -n $NAME1 && $NAME1 == "$NAME2" ]]; then ok "same pet after cache wipe ($NAME1)"; else fail "identity drifted: '$NAME1' vs '$NAME2'"; fi
 # the generator is FROZEN (util.sh): editing it renames every pet in the
-# wild, so the exact mapping is pinned — id 3151702 must always be Lonisux
-assert_contains "$SNAP2" "Lonisux" "name generator frozen: id 3151702 → Lonisux, forever"
+# wild, so the exact mapping is pinned — id 3151702 must always be Chochowi
+assert_contains "$SNAP2" "Chochowi" "name generator frozen: id 3151702 → Chochowi, forever"
 
 echo "· misery cap (plan.md §3.1): starving pet cannot be happy"
 rm -rf "$XDG_CACHE_HOME/gitagotchi"
@@ -450,7 +450,7 @@ rm -rf "$XDG_CACHE_HOME/gitagotchi"
 SVG1=$("$ROOT/gh-pet" badge --fixtures fixtures 2>&1)
 if [[ $? -ne 0 ]]; then fail "badge exits 0"; else ok "badge exits 0"; fi
 assert_contains "$SVG1" "<svg xmlns" "badge: emits svg"
-assert_contains "$SVG1" "Lonisux"    "badge: the pet's name on the card"
+assert_contains "$SVG1" "Chochowi"    "badge: the pet's name on the card"
 assert_contains "$SVG1" "crispEdges" "badge: pixel rects stay crisp"
 assert_contains "$SVG1" 'id="blink"' "badge: blink overlay on an awake pet"
 # deterministic for a given state (no clocks, no RANDOM) — that's what lets
@@ -516,8 +516,8 @@ ZK=$(
   rm -rf "$XDG_CACHE_HOME"
 )
 assert_contains "$ZK" "wrongcase Zeruko"  "your pet is Zeruko even when you type your login in the wrong case"
-assert_contains "$ZK" "stranger Lonisux"  "a friend keeps their derived name (Zeruko is not handed out)"
-assert_contains "$ZK" "unauth Lonisux"    "unauthenticated: an empty ME never claims a pet as yours"
+assert_contains "$ZK" "stranger Chochowi"  "a friend keeps their derived name (Zeruko is not handed out)"
+assert_contains "$ZK" "unauth Chochowi"    "unauthenticated: an empty ME never claims a pet as yours"
 
 echo "· state legality table (§8.4): the single source of truth for which"
 echo "  visual layers may coexist — no sleeping-reader, no sick ball-batter,"
