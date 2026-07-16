@@ -135,7 +135,10 @@ elif [[ -n $TOKEN ]]; then
 fi
 TARGET=${ARG_LOGIN:-$ME}
 [[ -z $TARGET ]] && die "no login: run 'gh auth login' or pass one (gh-pet <login>)"
-SELF=0; [[ $TARGET == "$ME" || -n $FIXDIR ]] && SELF=1
+# ME is canonical (from the API) but TARGET may be typed any way; miss the match
+# and your own pet is fetched as a stranger's — SELF gates the authed tier, so
+# health and notifications would silently go missing (same_login, util.sh)
+SELF=0; { same_login "$TARGET" "$ME" || [[ -n $FIXDIR ]]; } && SELF=1
 
 declare -A S F
 declare -a FR_LOGINS=() FR_SORTED=() VPOOL=() VPOOL_URL=() FLOATERS=() FL_DIR=()
@@ -198,9 +201,14 @@ term_size() {
   fi
 }
 
+# cbreak, not just -echo: echo-off while canonical mode is still on is exactly
+# how a shell asks for a password, and terminals badge that tty state with a key
+# icon (macOS Terminal, iTerm2, Ghostty). -icanon says "full-screen app", not
+# "password prompt", and is what read -rsn1 wants anyway.
 enter_alt() {
   (( IN_ALT )) && return
-  tput smcup 2>/dev/null; tput civis 2>/dev/null; stty -echo 2>/dev/null
+  tput smcup 2>/dev/null; tput civis 2>/dev/null
+  stty -echo -icanon min 1 time 0 2>/dev/null
   IN_ALT=1
 }
 
@@ -494,8 +502,8 @@ friend_row_load() { # login → FRROW[login]
   # preview knobs: pretend a friend was an egg / hatchling at first sight, so
   # the real hatch / level-up celebration fires on their very next derive
   if [[ -z ${PREV_FRSTAGE[$login]:-} ]]; then
-    [[ $login == "${GITAGOTCHI_PRETEND_HATCH:-}" ]] && PREV_FRSTAGE[$login]=egg
-    [[ $login == "${GITAGOTCHI_PRETEND_LEVEL:-}" ]] && PREV_FRSTAGE[$login]=hatchling
+    same_login "$login" "${GITAGOTCHI_PRETEND_HATCH:-}" && PREV_FRSTAGE[$login]=egg
+    same_login "$login" "${GITAGOTCHI_PRETEND_LEVEL:-}" && PREV_FRSTAGE[$login]=hatchling
   fi
   # a friend's life moves: hatching gets confetti, growing up gets sparkles
   local prevst=${PREV_FRSTAGE[$login]:-}

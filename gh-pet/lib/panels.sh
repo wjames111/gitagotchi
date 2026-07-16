@@ -12,7 +12,12 @@
 
 VX_COMP_KEYS=(HUNGER MOOD ENERGY FITNESS CLEAN SOCIAL CURIOSITY WISDOM HEALTH)
 VX_COMP_NAMES=(hunger mood energy fitness cleanliness social curiosity wisdom health)
-VX_COMP_W=(20 20 15 10 10 10 5 5 5)
+# whole percents summing to 100, mirroring stats.jq §10 — keep in lockstep
+VX_COMP_W=(28 24 18 5 5 10 5 2 3)
+# the misery cap listens to SURVIVAL needs only (stats.jq §10, plan.md §3.1) —
+# the aspirational four weigh on the composite but can never trip it
+VX_SURVIVAL=(HUNGER MOOD ENERGY CLEAN HEALTH)
+vx_is_survival() { local k; for k in "${VX_SURVIVAL[@]}"; do [[ $k == "$1" ]] && return 0; done; return 1; }
 
 # facts in the why-line get bolded (mockup .why b): numbers with their units —
 # "3 PRs merged", "#482", "4h", "feeds 14", "×1.0", "est. 2019", bare counts
@@ -443,13 +448,18 @@ draw_vitals_x() { # assoc_name self — 1:1 with the mockup's vitals screen
         hlpat="misery cap:|${P[CAPPED_BY]} is ${P[CAPPED_VAL]}"
         capstat="${P[CAPPED_BY]} is ${P[CAPPED_VAL]}"
       else
+        # only the SURVIVAL stats can trip the cap (stats.jq §10), so only they can
+        # be "closest to the line" — scanning all nine used to nominate whichever
+        # aspirational stat happened to be lowest and hand out a fix ("star a repo")
+        # for a cap that starring cannot avert
         local mn="" mv=101 si
         for si in "${!VX_COMP_KEYS[@]}"; do
+          vx_is_survival "${VX_COMP_KEYS[si]}" || continue
           local sv=${P[${VX_COMP_KEYS[si]}]:-}
           [[ -z $sv ]] && continue
           (( sv < mv )) && { mv=$sv; mn=${VX_COMP_NAMES[si]}; }
         done
-        ntext="⚠ misery cap: if any stat falls below 20, happiness caps at 60 — starving can't be averaged away."
+        ntext="⚠ misery cap: if any survival stat falls below 20, happiness caps at 60 — starving can't be averaged away."
         hlpat="misery cap:"
         if [[ -n $mn ]]; then
           ntext+=" Closest to the line right now: ${mn} ${mv} ($(vx_suggest "$mn"))."
@@ -1237,9 +1247,9 @@ draw_friends_x() {
       scr_put "$pr" $(( px0 + (piw - ${#chip}) / 2 )) ${#chip} \
         "$(fgt "$prgb")${C_DIM}[ ${RS}$(fgt "$prgb")■ ${lang_lc}${RS}$(fgt "$prgb")${C_DIM} ]${RS}"
       pr=$((pr + 2))
-      # five mini rows: enough to gossip, not enough to surveil
-      local -a pkeys=(HAPPINESS HUNGER ENERGY FITNESS SOCIAL)
-      local -a pnames=(happy hunger energy fitness social)
+      # mini rows to match the compare view: enough to gossip, not enough to surveil (health stays private)
+      local -a pkeys=(HAPPINESS HUNGER ENERGY FITNESS SOCIAL CLEAN CURIOSITY WISDOM)
+      local -a pnames=(happy hunger energy fitness social clean curiosity wisdom)
       local pk
       local ppitch=1
       (( ph - pr >= 2 * ${#pkeys[@]} + 6 )) && ppitch=2   # breathing room

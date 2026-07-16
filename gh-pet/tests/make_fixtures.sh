@@ -125,36 +125,67 @@ jq -n '{ok: true, medals: [
 echo '[]' > "$OUT/orgs.json"
 jq -n '[{login:"mona"},{login:"defunkt"},{login:"ashtom"}]' > "$OUT/following.json"
 
-# starving variant: zero merges (hunger 0) but everything else thriving, so the
-# raw composite exceeds 60 and the misery cap visibly binds (plan.md §3.1)
+# starving variant: zero merges (hunger 0) but everything else ELITE, so the raw
+# composite still exceeds 60 and the misery cap visibly BINDS (plan.md §3.1).
+#
+# The bar for "elite" moved on 2026-07-16, when hunger's weight went 0.20 → 0.28.
+# hunger=0 now costs 28 points off the top, so the other eight stats must average
+# >83 to clear 60 (it was >75). The old merely-thriving fixture lands at raw 55
+# under the new weights — the composite reports that pet's misery honestly and the
+# cap never fires, which is the reweight working as intended but leaves the cap's
+# binding path (and its insight string) untested. So this pet is now the literal
+# subject of §3.1: shiny medals, empty belly.
+#
+# Every stat below is at or near its ceiling, and the ceilings are low in places:
+# mood buckets top out at 92 (ecstatic), energy at 86. Raw lands at 66 — only 6
+# clear of the cap, and that is close to the best a hunger=0 pet can do (the
+# theoretical max is 72). If a future reweight raises hunger again there may be no
+# elite pet left that the cap can bind, and this fixture stops being expressible;
+# at that point the honest move is to test the cap through a low-weight survival
+# stat (clean 5%, health 3%) instead, where it still does real work.
+# tests/run.sh pins HAPPY_RAW > 60 so a drift reports as "raw fell to N", not as a
+# missing string.
 cp "$OUT"/*.json "$OUT-starving/"
 echo '{"total_count": 0, "items": []}' > "$OUT-starving/merged.json"
-# ecstatic-tier feedback: the cap note only shows when it BINDS (raw > 60),
-# so everything except hunger must genuinely thrive
-echo '{"total_count": 30, "items": []}' > "$OUT-starving/approved.json"
-echo '[]' > "$OUT-starving/stale.json"
+echo '{"total_count": 30, "items": []}' > "$OUT-starving/approved.json"   # mood 92 (ecstatic, the bucket ceiling)
+echo '[]' > "$OUT-starving/stale.json"                                    # clean 100
+echo '{"critical": 0, "high": 0, "moderate": 0}' > "$OUT-starving/alerts.json"  # health 100
+# social = 7·√outbound7 + min(following,20) — take the whole following cap
+jq -n '[range(0;20) | {login: "friend\(.)"}]' > "$OUT-starving/following.json"
 {
   ev() { jq -n --arg t "$(iso "$1")" --arg ty "$2" --arg rn "$3" \
     '{type:$ty, created_at:$t, repo:{name:$rn}}'; }
-  # three ≥6h gaps touching the last 24h → well rested; outbound-heavy → social
+  # three ≥6h gaps touching the last 24h → rested: energy 58 + 8·min(gaps-1,2) = 74
+  # (the wall below starts at 25h, so the 23h→25h gap is only 2h and doesn't count)
   ev 2 IssueCommentEvent mona/sandbox;   ev 9  PullRequestReviewEvent mona/sandbox
   ev 16 IssueCommentEvent defunkt/tools; ev 23 IssueCommentEvent ashtom/notes
-  ev 40 IssueCommentEvent mona/sandbox;  ev 60 PullRequestReviewEvent defunkt/tools
-  ev 80 IssueCommentEvent mona/sandbox;  ev 100 IssueCommentEvent defunkt/tools
-  ev 120 IssueCommentEvent mona/sandbox; ev 150 PullRequestReviewEvent ashtom/notes
-  ev 170 IssueCommentEvent mona/sandbox; ev 200 ForkEvent octotest/zigzag
-  ev 240 IssueCommentEvent defunkt/tools; ev 280 IssueCommentEvent mona/sandbox
-  ev 320 PushEvent octotest/cli
+  ev 40 ForkEvent octotest/zigzag        # forks14 → curiosity
+  # A wall of outbound review/comment traffic from 25h back. Two things ride on
+  # its SHAPE, not just its size:
+  #   · social is sub-linear (7·√n), so it takes ~100 events to reach the 90s.
+  #   · energy's +12 slow bonus needs rate14 < 0.6·baseline, i.e. span < 8.4d.
+  #     Keeping the OLDEST event inside ~7d (the old fixture reached back 320h/13d)
+  #     is what lifts energy 74 → 86, its ceiling. Don't stretch this tail.
+  # All of it sits outside the last 24h, so the rest gaps above survive intact.
+  # Eight distinct counterparts (repos30 lands on 9 with zigzag) — comfortably past
+  # the min(repos30,8) cap on curiosity's everyday-signal term.
+  _r=(mona/sandbox defunkt/tools ashtom/notes mona/labs defunkt/hub ashtom/kit mona/forge defunkt/lab)
+  for _i in $(seq 0 99); do
+    ev $(( 25 + _i + (_i / 8) * 3 )) IssueCommentEvent "${_r[_i % 8]}"
+  done
 } | jq -s . > "$OUT-starving/events.json"
-jq -n --arg s0 "$(isod 1)" --arg s1 "$(isod 3)" --arg s2 "$(isod 5)" \
-      --arg s3 "$(isod 8)" --arg s4 "$(isod 11)" '[
+# 7 stars in 14d (6 each) + forks + a new language + repos30 → curiosity 100
+jq -n --arg s0 "$(isod 1)" --arg s1 "$(isod 2)" --arg s2 "$(isod 3)" \
+      --arg s3 "$(isod 5)" --arg s4 "$(isod 8)" --arg s5 "$(isod 10)" \
+      --arg s6 "$(isod 11)" '[
   {starred_at:$s0,repo:{}},{starred_at:$s1,repo:{}},{starred_at:$s2,repo:{}},
-  {starred_at:$s3,repo:{}},{starred_at:$s4,repo:{}}
+  {starred_at:$s3,repo:{}},{starred_at:$s4,repo:{}},{starred_at:$s5,repo:{}},
+  {starred_at:$s6,repo:{}}
 ]' > "$OUT-starving/starred.json"
-# 20 of 21 days active (fitness ~94 — thriving, so only hunger drags)
+# 21 of 21 days active → fitness 100
 {
   days=""
-  for d in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19; do
+  for d in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
     days+="{\"date\":\"$(isod $d | cut -dT -f1)\",\"contributionCount\":2},"
   done
   echo "{\"data\":{\"user\":{\"contributionsCollection\":{\"contributionCalendar\":{
