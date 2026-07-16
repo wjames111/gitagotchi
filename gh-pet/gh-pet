@@ -254,7 +254,13 @@ neon_ink() { # tp sp hot → REPLY=SGR escape
   local b=$(( 242 * $2 / 100 ))
   REPLY=$'\e[38;2;'"$r;$g;$b"'m'
 }
+# power_on [static] — the neon wordmark. Default is the ignition animation
+# (§5.1, onboarding). static=1 paints the settled sign in ONE pass with no
+# frame loop and no read_key delay: launch uses it to hold the terminal while
+# the state derives, so it has to cost ~nothing — an animation there would add
+# its own ~3s to the very gap it exists to cover.
 power_on() {
+  local static=${1:-0}
   [[ $PIX_MODE == T || $PIX_MODE == 256 ]] || return 1   # else: plain title
   local word="GITAGOTCHI" gap=1 rows=7
   local -a lx lw lt lch                                   # x, width, hue%, char
@@ -275,6 +281,7 @@ power_on() {
   # ignition schedule: onAt[i] = 6 + 3i frames @ ~60ms ≈ 0.36 + 0.18i s (§5.1)
   local -a onAt; for (( i=0; i<${#word}; i++ )); do onAt[i]=$(( 6 + 3 * i )); done
   local last=$(( onAt[${#word}-1] + 8 ))
+  (( static )) && last=0            # one settled frame, no schedule
   printf '\e[2J\e[H'
   local f r
   for (( f=0; f<=last; f++ )); do
@@ -286,7 +293,8 @@ power_on() {
         local -a g=(${NEON_GLYPH[${lch[i]}]}); local rowbits=${g[r]}
         # per-frame brightness for this letter (mirrors the HTML level machine)
         local sp=100 hot=0
-        if (( f < onAt[i] )); then
+        if (( static )); then :        # settled: lit, no ignition flash, no flicker
+        elif (( f < onAt[i] )); then
           if (( RANDOM % 100 < 12 )); then sp=$(( 55 + RANDOM % 30 )); else sp=6; fi
         elif (( f < onAt[i] + 2 )); then sp=100 hot=1     # ignition flash
         else (( RANDOM % 100 < 3 )) && sp=$(( 25 + RANDOM % 40 ))  # rare hum flicker
@@ -303,9 +311,12 @@ power_on() {
     done
     # caption: powering on… until the last tube settles, then a steady hum
     local cap="powering on…"; (( f >= last - 6 )) && cap="humming ${G_SPARK}"
+    (( static )) && cap="waking…"
     printf '\e[K\n'; center "$cap"; printf '\e[K'
-    read_key 0.06; [[ -n $KEY ]] && break
+    (( static )) || { read_key 0.06; [[ -n $KEY ]] && break; }
   done
+  # static: leave the lit sign standing — paint() clears it on the first frame
+  (( static )) && return 0
   read_key 0.5   # hold the lit sign a beat, then the boot lines cascade below it
   # park the cursor just under the sign and wipe the caption + everything below,
   # leaving the wordmark lit; onboarding prints the auth lines from here
@@ -995,6 +1006,10 @@ enter_alt
 if (( first_run )); then
   onboarding    # the reveal replays on any new machine — proves nothing is stored
 else
+  # enter_alt just blanked the terminal and the first paint() is a derive away.
+  # Hold the lit wordmark over that gap rather than an empty screen — static,
+  # so it costs nothing and is gone the moment there's a real frame to show.
+  power_on 1 || { printf '\e[2J\e[H'; center "gitagotchi"; }
   load_state S "$TARGET" || true
   spawn_refresh
   # make sure we have something to draw
@@ -1119,6 +1134,25 @@ if [[ -n $DEMO ]]; then
 fi
 
 # ── the 4 fps loop: chunky is the charm (§8.2, P5) ──────────────────────────
+# frame_wait — read_key's timeout IS the frame clock (§8.2), but waiting a flat
+# 0.25s AFTER drawing makes the period 0.25s + draw, not 0.25s: a ~270ms draw
+# was pacing the "4 fps" loop at 1.9. Subtract the work already done this frame
+# so the period is 0.25s whenever the draw fits, and degrades to the draw time
+# when it doesn't. EPOCHREALTIME is a bash builtin — no fork on the hot path.
+# EPOCHREALTIME is "sec.usec" (the separator follows LC_NUMERIC, hence [.,]);
+# stripping it gives whole microseconds, so the budget is plain integer math
+# with no fork — awk here would cost more than it saves.
+FRAME_US=250000                      # 4 fps
+FRAME_T0=${EPOCHREALTIME//[.,]/}
+frame_wait() {
+  local now=${EPOCHREALTIME//[.,]/} left tmo
+  left=$(( FRAME_US - (now - FRAME_T0) ))
+  (( left < 1000 )) && left=1000     # the draw overran: yield briefly, don't busy-spin
+  printf -v tmo '%d.%06d' $(( left / 1000000 )) $(( left % 1000000 ))
+  read_key "$tmo"
+  FRAME_T0=${EPOCHREALTIME//[.,]/}
+}
+
 while :; do
   TICK=$((TICK + 1))
   demo_tick
@@ -1191,7 +1225,7 @@ while :; do
   (( HELP )) && overlay_help
   paint
 
-  read_key 0.25; k=$KEY
+  frame_wait; k=$KEY
   [[ -z $k ]] && continue
 
   if (( HELP )); then

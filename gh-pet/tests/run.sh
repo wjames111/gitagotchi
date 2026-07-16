@@ -231,19 +231,28 @@ BEARDA=$(
     printf "specs$specs %s\n" "${PIXGRID[@]}"   # tag every row with its case
   done
 )
-# the mouth-anchored beard: an 8-wide run centred under the cat's chin, the
-# body's D rim still intact on both flanks. Asserted per-case — untagged, the
-# adult's good row satisfies the grep and the elder's breakage sails through.
-assert_contains "$BEARDA" "specs0 .....DOOBBBBBBBBOOD....." "beard hangs off the adult's mouth, centred"
-assert_contains "$BEARDA" "specs1 .....DOOBBBBBBBBOOD....." "the elder's beard hangs in the very same place"
-# the left-lens beard: shoved 4px left, spilling out over the body outline
-if grep -qF "BBBBBBBBKOOOROD" <<<"$BEARDA"; then
-  fail "beard ignores the elder's spectacle rim (not the left lens)"
-else
+# the mouth-anchored beard: the authored 8-wide run centred under the cat's
+# chin, the body's D rim still intact on both flanks. The art is anamorphic
+# (48x18, half-width pixels), so every authored width doubles — the run lands
+# 16 wide. Asserted per-case: untagged, the adult's good row satisfies the grep
+# and the elder's breakage sails through.
+assert_contains "$BEARDA" "specs0 ..........DDDOOOBBBBBBBBBBBBBBBBOOSDDD.........." "beard hangs off the adult's mouth, centred"
+assert_contains "$BEARDA" "specs1 ..........DDDOOOBBBBBBBBBBBBBBBBOOSDDD.........." "the elder's beard hangs in the very same place"
+# the left-lens beard: shoved left, spilling out over the body outline. This
+# used to grep a literal 24-wide row, which a 48-wide grid can never contain —
+# the check had gone vacuous. Assert the geometry instead: the run sits centred
+# in the body, so an anchor that drifted onto the lens shows up as a lopsided
+# row whatever the art's width.
+BROW=$(grep -F "specs1 " <<<"$BEARDA" | grep -m1 -F "BBBBBBBBBBBBBBBB" | sed 's/^specs1 //')
+BLEAD=${BROW%%B*}; BTRAIL=${BROW##*B}
+if [[ -n $BROW && ${#BLEAD} -eq ${#BTRAIL} ]]; then
   ok "beard ignores the elder's spectacle rim (not the left lens)"
+else
+  fail "beard off-centre: ${#BLEAD} cols left of it, ${#BTRAIL} right"
 fi
-# and the glasses still get drawn — the fix must not cost the elder its specs
-assert_contains "$BEARDA" "DKKWKKKKKKKWKD" "the bespectacled elder still wears its glasses"
+# and the glasses still get drawn — the fix must not cost the elder its specs.
+# Doubled from the authored DKKWKKKKKKKWKD, rim and bridge alike.
+assert_contains "$BEARDA" "DDKKKKWWKKKKKKKKKKKKKKWWKKDD" "the bespectacled elder still wears its glasses"
 
 # A NAP MUST NOT SHAVE AN ELDER. 14 of the 50 species author sleep_*/sick_*/
 # eat_2 with no K anywhere (a closed eye is an interior D), so the face hunt
