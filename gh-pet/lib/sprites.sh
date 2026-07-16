@@ -152,7 +152,6 @@ compose_sprite() {
     [[ -n $seg ]] && out+="${cur}${seg}${RS}"
     SPCOMP_COL+=("$out")
   done
-  SPCOMP_FACE_R=$face_r
 }
 
 # global frames (design.md §6.1: cocoon + egg are global, tinted per-pet)

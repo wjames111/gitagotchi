@@ -7,7 +7,7 @@ CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/gitagotchi"
 NETDIR="$CACHE_ROOT/.net"
 API="https://api.github.com"
 
-TTL_FAST=60 TTL_MEDIUM=60 TTL_SLOW=86400
+TTL_FAST=60 TTL_MEDIUM=600 TTL_SLOW=86400   # medium = 10 min (plan.md §5.1): keeps search calls well under the 30 req/min secondary limit
 TTL_FRIEND=300   # friend renders cached 5 minutes (plan.md §6)
 
 # ── auth resolution (plan.md §9.2): gh → env → unauthenticated ──────────────

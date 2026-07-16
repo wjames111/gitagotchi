@@ -34,7 +34,7 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: all
-Depends: bash (>= 4.0), jq, curl
+Depends: bash (>= 4.0), jq, curl, awk
 Maintainer: William James <wjames111@users.noreply.github.com>
 Homepage: https://github.com/wjames111/gitagotchi
 Description: Terminal Tamagotchi derived from your GitHub account

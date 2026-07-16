@@ -11,7 +11,7 @@
 #        --no-scrape  skip the achievements scrape (plan.md §4)
 #        --no-links   disable OSC 8 hyperlinks
 #        --fixtures D derive the pet from recorded API fixtures (offline)
-#        --demo X     stage an animation on a loop: wake | eat | celebrate | tired | wired | curious | social | reviewer | skinny | chubby | hatch | love | sleep | fit | unfit | stretcher | fetch | messy | wise
+#        --demo X     stage an animation on a loop: wake | eat | celebrate | tired | wired | curious | social | reviewer | skinny | chubby | hatch | love | sleep | fit | unfit | stretcher | fetch | messy | wise | night | winter | spring | autumn
 #        --panel P    with --snapshot: vitals | activity | friends | feed
 #        --onboarding replay the first-run hatch theater even if cached (§5.1)
 
@@ -67,8 +67,10 @@ while (( $# )); do
     --fixtures) shift; FIXDIR=$(cd "$1" 2>/dev/null && pwd) || die "bad fixtures dir: $1" ;;
     --version|-v) echo "gh-pet $VERSION"; exit 0 ;;
     --diag) CMD=diag ;;
-    --demo) shift; DEMO=${1:-wake} ;;
-    --panel) shift; PANEL=${1:-} ;;   # with --snapshot: vitals|activity|friends|feed
+    # only consume the next token as the value when it isn't itself a flag,
+    # so `--demo --snapshot` doesn't silently swallow --snapshot
+    --demo) if [[ ${2:-} && ${2:0:1} != - ]]; then shift; DEMO=$1; else DEMO=wake; fi ;;
+    --panel) if [[ ${2:-} && ${2:0:1} != - ]]; then shift; PANEL=$1; else PANEL=""; fi ;;   # with --snapshot: vitals|activity|friends|feed
     --onboarding) OPT_ONBOARD=1 ;;    # force the §5.1 hatch theater on next run
     --help|-h) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     compare) CMD=compare; shift; CMP_LOGIN=${1:-}; [[ -n $CMP_LOGIN ]] || die "compare needs a login" ;;
@@ -100,7 +102,7 @@ if [[ $CMD == diag ]]; then
   [[ $COLS =~ ^[0-9]+$ ]] || COLS=0
   [[ $LINES =~ ^[0-9]+$ ]] || LINES=0
   echo "gh-pet $VERSION — render diagnostics"
-  echo "  terminal size   : ${COLS}×${LINES}   (dense needs ≥ 110×32; forced ≥ 84×26)"
+  echo "  terminal size   : ${COLS}×${LINES}   (dense is the default at every size; ≥ 110×32 shows it uncramped)"
   echo "  TERM            : ${TERM:-<unset>}"
   echo "  TERM_PROGRAM    : ${TERM_PROGRAM:-<unset>}"
   echo "  COLORTERM       : ${COLORTERM:-<unset>}"
@@ -118,17 +120,24 @@ ME=""
 if [[ -n $FIXDIR ]]; then
   ME=$(jq -r '.login // "fixture-user"' "$FIXDIR/user.json" 2>/dev/null || echo fixture-user)
 elif [[ -n $TOKEN ]]; then
-  if [[ -f $CACHE_ROOT/.me ]]; then ME=$(cat "$CACHE_ROOT/.me")
+  # cache the resolved login, but key it to a fingerprint of the token so a
+  # switched account (new token) re-resolves instead of showing the old pet.
+  # We store the fingerprint, never the token itself.
+  if have shasum; then TOKEN_FP=$(printf '%s' "$TOKEN" | shasum -a 256 | cut -c1-16)
+  else TOKEN_FP=$(printf '%s' "$TOKEN" | sha256sum | cut -c1-16); fi
+  if [[ -f $CACHE_ROOT/.me ]] && IFS='|' read -r _mefp _melogin < "$CACHE_ROOT/.me" \
+       && [[ $_mefp == "$TOKEN_FP" && -n $_melogin ]]; then
+    ME=$_melogin
   else
     ME=$(curl -sS --max-time 10 -H "Authorization: Bearer $TOKEN" "$API/user" 2>/dev/null | jq -r '.login // empty')
-    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s' "$ME" > "$CACHE_ROOT/.me"; }
+    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s|%s' "$TOKEN_FP" "$ME" > "$CACHE_ROOT/.me"; }
   fi
 fi
 TARGET=${ARG_LOGIN:-$ME}
 [[ -z $TARGET ]] && die "no login: run 'gh auth login' or pass one (gh-pet <login>)"
 SELF=0; [[ $TARGET == "$ME" || -n $FIXDIR ]] && SELF=1
 
-declare -A S F TMPF
+declare -A S F
 declare -a FR_LOGINS=() FR_SORTED=() VPOOL=() VPOOL_URL=() FLOATERS=() FL_DIR=()
 declare -A FRROW FR_FETCHED
 
@@ -157,7 +166,7 @@ VSEL=0 VX_TWO=1               # one cursor across both vitals panels
 declare -A PV
 declare -A VPET1 VPET2 VPET3   # visitor pets on the stage (social cameo)
 VPET_KEY=""
-FETCH_PID="" FETCH_KIND="" FR_PENDING="" FR_NEXT_AT=0
+FETCH_PID="" FETCH_KIND="" FR_NEXT_AT=0
 NEXT_REFRESH=0 LAST_FORCE=0
 PREV_MERGE="" PREV_MEDALS=-1 PREV_FOLLOWERS=-1 PREV_MAIL=-1 PREV_REVREQ=-1
 RESIZED=0 IN_ALT=0
@@ -294,6 +303,57 @@ power_on() {
   # leaving the wordmark lit; onboarding prints the auth lines from here
   printf '\e[%d;1H\e[J' "$(( top + rows + 2 ))"
   return 0
+}
+
+# the goodbye (§5.9, gitagotchi-goodbye_1.html): quitting shouldn't feel like
+# killing a process. The pet turns and waves you off — a raised paw swinging a
+# couple of times with a "bye!" and a heart, ending on a happy eyes-closed pose
+# — then the loop breaks and the EXIT trap (tput rmcup) hands back the exact
+# shell you started from. ~1.2s, skippable with any key. The pixel tier gets the
+# procedural wave arm; the ASCII tier bids farewell with the plain pet.
+#
+# A too-young pet (< 7 days) is still an egg: no paw, no face to wave with, so
+# the sendoff just wobbles the egg — the same tick tilt as its stage — rather
+# than showing a character that hasn't hatched yet.
+goodbye() {
+  local i l vpad lpad bpad sp
+  local byvis="bye!  ${G_HEART_FLOAT}"                 # visible text (no ANSI)
+  local byline="${C_INK}${C_ITAL}bye!  ${RS}${C_HEARTS}${G_HEART_FLOAT}${RS}"
+  PET_XWOB=0
+  _bye_draw() { # PET_LINES/PET_W/PET_XWOB already composed — draw one beat
+    printf '\e[2J\e[H'
+    # centre by the sprite's visible width (PET_W) — the coloured half-block
+    # rows carry ANSI, so a byte-length centre would shove them to the margin
+    vpad=$(( (LINES - ${#PET_LINES[@]}) / 2 - 2 )); (( vpad < 0 )) && vpad=0
+    lpad=$(( (COLS - PET_W) / 2 + PET_XWOB )); (( lpad < 0 )) && lpad=0
+    printf -v sp '%*s' "$lpad" ""
+    for ((l=0; l<vpad; l++)); do echo; done
+    for l in "${PET_LINES[@]}"; do printf '%s%s\n' "$sp" "$l"; done
+    bpad=$(( (COLS - ${#byvis}) / 2 )); (( bpad < 0 )) && bpad=0
+    printf '\n%*s%s\n' "$bpad" "" "$byline"
+  }
+  if [[ ${S[STAGE]:-} == egg ]]; then
+    local -a tilts=(-1 1 -1 1)
+    for i in "${!tilts[@]}"; do
+      egg_compose S "${tilts[i]}"; _bye_draw
+      read_key 0.18; [[ -n $KEY ]] && break
+    done
+    egg_compose S 0; _bye_draw                          # settle upright, then go
+    read_key 0.45
+  else
+    local -a swings=(-1 1 -1 1)
+    _bye_frame() { # swing blink — compose the waving pet, then draw
+      PET_WAVE=$1; pet_compose S idle_1 "$2" 0; PET_WAVE=0; PET_XWOB=0
+      _bye_draw
+    }
+    for i in "${!swings[@]}"; do
+      _bye_frame "${swings[i]}" 0
+      read_key 0.18; [[ -n $KEY ]] && break
+    done
+    # a last happy, eyes-closed pose (^‿^) before the curtain falls
+    _bye_frame 1 1
+    read_key 0.45
+  fi
 }
 
 # ── onboarding (§5.1): auth resolution IS the onboarding, rendered as theater ─
@@ -888,7 +948,7 @@ first_run=0
 [[ ! -f $CACHE_ROOT/$TARGET/state.env ]] && first_run=1
 (( OPT_ONBOARD )) && first_run=1   # --onboarding: replay the hatch theater on demand
 
-if (( OPT_SNAPSHOT )) || [[ $CMD == compare && $OPT_SNAPSHOT == 1 ]]; then
+if (( OPT_SNAPSHOT )); then   # compare's own --snapshot sets OPT_SNAPSHOT too
   fetch_all "$TARGET" "$SELF" >/dev/null 2>&1
   derive_state "$TARGET" || true
   load_state S "$TARGET" || die "could not derive pet for $TARGET"
@@ -1206,11 +1266,8 @@ while :; do
         g) dense_active && MODE=activity XSRC=S XSELF=1 XFROM=main ;;
         e) dense_active && MODE=feedx XSRC=S XSELF=1 XFROM=main SEL_FEED=0 ;;
         q)
-          # one frame of goodbye, then the terminal is exactly as it was (§5.9)
-          printf '\e[2J\e[H'
-          for ((i=0; i<LINES/2-1; i++)); do echo; done
-          center "(o.o)/  bye!"
-          read_key 0.4
+          # the pet waves you off, then the terminal is exactly as it was (§5.9)
+          goodbye
           break ;;
       esac ;;
     stats)

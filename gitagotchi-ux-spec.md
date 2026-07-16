@@ -394,7 +394,7 @@ its human "why", and its literal GitHub source:
 │                                                          │
 │   energy       ████░░░░░░░░  34                          │
 │   mood         ████████░░░░  68                          │
-│   fitness      ██████░░░░░░  55   · 9 of last 14 days    │
+│   fitness      ██████░░░░░░  55   · 9 of last 21 days    │
 │   cleanliness  ██████████░░  85                          │
 │   curiosity    ███░░░░░░░░░  25                          │
 │   social       ███████░░░░░  60                          │

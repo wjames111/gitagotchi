@@ -40,16 +40,18 @@ gh-pet compare torvalds   # side-by-side — friendly rivalry, not a leaderboard
 gh-pet badge > pet.svg    # render your pet as an SVG for your profile README
 ```
 
-On a terminal ≥ 110×32 with truecolor you get the **dense layout** above — five panels,
-each border colored to its meaning, sparkline vitals with derived history, a 60-day
-contribution graph, a friends table, and a live feed. Smaller or plainer terminals fall
-back through ANSI-256 to a pure-ASCII pet; nothing is required beyond `bash`, `jq`, `curl`.
+The **dense layout** above is the default at every size — five panels, each border colored
+to its meaning, sparkline vitals with derived history, a 60-day contribution graph, a
+friends table, and a live feed. It compresses to fit; a terminal ≥ 110×32 with truecolor
+shows it uncramped, and `d` (or `--cozy`) switches to the minimal single-pet layout.
+Plainer terminals fall back through ANSI-256 to a pure-ASCII pet; nothing is required
+beyond `bash`, `jq`, `curl`.
 
 ## Put your pet in your profile README
 
 `gh-pet badge` emits a self-contained SVG — pixel-perfect, theme-dark, with a CSS blink that
 survives GitHub's image proxy. Drop [`templates/pet-badge.yml`](gh-pet/templates/pet-badge.yml)
-into your `<login>/<login>` profile repo and it re-renders on a 6-hour cron (the pet changes
+into your `<login>/<login>` profile repo and it re-renders on an hourly cron (the pet changes
 even when GitHub doesn't — hunger decays, sleep follows the clock), committing only when the
 pet actually changed:
 

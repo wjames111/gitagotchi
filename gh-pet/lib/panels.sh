@@ -1002,9 +1002,9 @@ draw_friends_x() {
   if (( ! srows )); then fxh=(); for ((j3=0; j3<fN; j3++)); do fxh+=("$fpitch"); done; fi
   if (( fN > 0 )); then
     # the last row carries no trailing gap — don't let a phantom gap
-    # push an exactly-fitting list into scroll mode
+    # push an exactly-fitting list into scroll mode. Sprite rows already
+    # stack gapless (fgap=0), so only the fallback pitch needs trimming.
     (( ! srows )) && fxh[fN-1]=1
-    (( srows && fxh[fN-1] == 3 )) && fxh[fN-1]=2
     (( SEL_FRIEND >= fN )) && SEL_FRIEND=$(( fN - 1 ))
   fi
   local -a fpre=(0); local hsum=0

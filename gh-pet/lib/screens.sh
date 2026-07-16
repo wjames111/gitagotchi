@@ -428,8 +428,17 @@ draw_compare() { # me_assoc friend_assoc
   (( LINES < 24 )) && stage_h=$(( LINES - 12 )); (( stage_h < 4 )) && stage_h=4
   local -a LP=() RP2=()
   local lw=0 rw=0 lh rh
-  pet_compose "$1" "$ANIM_FRAME" 0 0
-  LP=("${PET_LINES[@]}"); lw=$PET_W; lh=$PET_H
+  # §5.7: idle frames only — never the live ANIM_FRAME (sick/sleep/eat/celebrate),
+  # which would make "you" asymmetric with the always-idle friend and drag the
+  # stretcher theater into a comparison. Hibernating self shows a cocoon, like the friend.
+  if [[ ${CM[HIB]:-0} == 1 ]]; then
+    cocoon_frame $(( (TICK / 4) % 2 )) ""
+    LP=("${SPCOMP_COL[@]}"); lh=${#LP[@]}; lw=0
+    local ll; for ll in "${SPCOMP_PLAIN[@]}"; do (( ${#ll} > lw )) && lw=${#ll}; done
+  else
+    pet_compose "$1" idle_1 0 0
+    LP=("${PET_LINES[@]}"); lw=$PET_W; lh=$PET_H
+  fi
   local ffr=idle_1; [[ ${CF[HIB]:-0} == 1 ]] && ffr=idle_1
   if [[ ${CF[HIB]:-0} == 1 ]]; then
     cocoon_frame $(( (TICK / 4) % 2 )) ""
@@ -480,10 +489,13 @@ draw_compare() { # me_assoc friend_assoc
   local mm ff2
   mm=$(compare_medal_str "${CM[MEDALS_RAW]:-}" "${CM[MEDALS_OK]:-0}")
   ff2=$(compare_medal_str "${CF[MEDALS_RAW]:-}" "${CF[MEDALS_OK]:-0}")
-  local lrow="  ${C_CHROME}medals ${RS}${C_MAILC}$(trunc "$mm" $((LW - 11)))${RS}"
-  local rrow="  ${C_CHROME}medals ${RS}${C_MAILC}$(trunc "$ff2" $((RW - 11)))${RS}"
-  local lfill=$(( LW - 9 - ${#mm} )); (( lfill < 0 )) && lfill=0
-  local rfill=$(( RW - 9 - ${#ff2} )); (( rfill < 0 )) && rfill=0
+  local mmv rmv                                   # fill must count the DISPLAYED
+  mmv=$(trunc "$mm" $((LW - 11)))                  # (truncated) string, not the raw
+  rmv=$(trunc "$ff2" $((RW - 11)))                 # one — else the border misaligns
+  local lrow="  ${C_CHROME}medals ${RS}${C_MAILC}${mmv}${RS}"
+  local rrow="  ${C_CHROME}medals ${RS}${C_MAILC}${rmv}${RS}"
+  local lfill=$(( LW - 9 - ${#mmv} )); (( lfill < 0 )) && lfill=0
+  local rfill=$(( RW - 9 - ${#rmv} )); (( rfill < 0 )) && rfill=0
   SCREEN+=("${C_CHROME}${B_V}${RS}${lrow}$(repeat_str " " $lfill)${C_CHROME}${B_V}${RS}${rrow}$(repeat_str " " $rfill)${C_CHROME}${B_V}${RS}")
 
   while (( ${#SCREEN[@]} < LINES - 1 )); do

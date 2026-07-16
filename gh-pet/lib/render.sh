@@ -316,7 +316,12 @@ pet_compose() { # assoc_name frame blink faint [flip]
         else GURNEY_OFF_AT="" GURNEY_ID=""; fi
       fi
     else
-      GURNEY_PREV=0
+      # this pet isn't on a gurney. GURNEY_PREV/GURNEY_AT are the tracked
+      # patient's edge-state — composing some OTHER pet (friends preview,
+      # compare) must NOT clobber them, or the next self-compose misreads a
+      # rising edge and replays the entrance. Only tear down when it's our pet
+      # recovering in a snapshot (the animated exit runs in the elif above).
+      if [[ ${GURNEY_ID:-} == "$gid" ]]; then GURNEY_PREV=0 GURNEY_ID="" GURNEY_OFF_AT=""; fi
     fi
     # review duty (≥3 outbound reviews this week): the pet stands guard with
     # the spear (1). Its own determined brow takes over, so the curiosity brow
@@ -346,7 +351,12 @@ pet_compose() { # assoc_name frame blink faint [flip]
     (( GATE_EXPR )) || { moodf=0 bigeye=0 brows=0 wag=0 spearh=0 reading=""; }
     (( GATE_BODY )) || body=0
     (( GATE_BEARD )) || beard=0
-    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading"
+    # the goodbye wave (§5.9): the quit handler pins PET_WAVE (-1/1 swing) so the
+    # idle pet raises a paw and waves you off. Only the self pet mid-idle waves —
+    # friend and compare renders never inherit it.
+    local wave=0
+    [[ $frame == idle_* && ${PET_WAVE:-0} != 0 ]] && wave=${PET_WAVE}
+    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading" "$wave"
     PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
   else
     # ASCII fallback tier: two-frame pixel names collapse to the §6 frames
@@ -378,6 +388,29 @@ pet_compose() { # assoc_name frame blink faint [flip]
   fi
 }
 
+# egg_compose (§5.9): the egg-stage twin of pet_compose. A pet younger than the
+# hatch threshold is still an egg — no species, no paw — so the goodbye wobbles
+# the egg instead of waving a character off. Fills PET_LINES/PET_W/PET_H the same
+# way pet_compose does, and reports the wobble shift in PET_XWOB: the pixel egg
+# has no tilt frame, so it leans by a one-column shift (the way the stage wobbles
+# it), while the ASCII egg tilts in the sprite itself.
+egg_compose() { # assoc_name tilt(-1|0|1)
+  local -n P=$1
+  local tilt=$2
+  PET_XWOB=0
+  if [[ -n $PIX_MODE && -n ${PIXF[egg/idle_1]:-} ]]; then
+    pix_palette egg "${P[COLOR_HEX]:-#dea584}" 0
+    pix_render egg idle_1 0 0 0
+    PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
+    PET_XWOB=$tilt
+  else
+    egg_frame "$tilt" "$(fg "${P[COLOR256]:-180}")"
+    PET_LINES=("${SPCOMP_COL[@]}")
+    PET_H=${#PET_LINES[@]} PET_W=0
+    local l; for l in "${SPCOMP_PLAIN[@]}"; do (( ${#l} > PET_W )) && PET_W=${#l}; done
+  fi
+}
+
 # ── voice line (§7): observe, never scold; always name the fact ─────────────
 voice_pool() { # assoc_name self → fills VPOOL[] + VPOOL_URL[] (parallel)
   local -n P=$1
@@ -405,7 +438,7 @@ voice_pool() { # assoc_name self → fills VPOOL[] + VPOOL_URL[] (parallel)
     fi
     return
   fi
-  local d_dry=$(( ${P[MERGE_AGO_H]:-'-1'} >= 0 ? P[MERGE_AGO_H] / 24 : 8 ))
+  local d_dry=$(( ${P[MERGE_AGO_H]:--1} >= 0 ? P[MERGE_AGO_H] / 24 : 8 ))
   if [[ ${P[HIB]} == 1 ]]; then
     if (( ${P[DAYS_QUIET]:-0} >= 90 )); then
       vline "${P[DAYS_QUIET]} days quiet. The cobwebs have cobwebs — the first push sweeps them away." "$u_prof"
@@ -415,7 +448,7 @@ voice_pool() { # assoc_name self → fills VPOOL[] + VPOOL_URL[] (parallel)
     fi
     return
   fi
-  if (( ${P[MERGE_AGO_H]:-'-1'} >= 0 && P[MERGE_AGO_H] < 24 )); then
+  if (( ${P[MERGE_AGO_H]:--1} >= 0 && P[MERGE_AGO_H] < 24 )); then
     vline "Merged #${P[MERGE_NUM]} $((P[MERGE_AGO_H] == 0 ? 1 : P[MERGE_AGO_H])) hours ago — $n is well fed." "${P[MERGE_URL]:-$u_merged}"
     (( ${P[MERGES7]} > 1 )) && vline "${P[MERGES7]} merges this week. The bowl runneth over." "$u_merged"
   fi

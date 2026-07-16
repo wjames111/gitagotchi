@@ -2,8 +2,15 @@
 # Generate fresh-dated API fixtures so the pure derive layer can be tested
 # offline (plan.md §9.1). Regenerate any time — dates are relative to now.
 set -euo pipefail
-cd "$(dirname "$0")"
-OUT=${1:-fixtures}
+HERE=$(cd "$(dirname "$0")" && pwd)
+# default fixtures live beside the script (tests/); an explicit relative arg is
+# resolved against the caller's CWD, not silently re-rooted under tests/.
+if [[ -n ${1:-} ]]; then
+  OUT=$1; [[ $OUT == /* ]] || OUT="$PWD/$OUT"
+else
+  OUT="$HERE/fixtures"
+fi
+cd "$HERE"
 mkdir -p "$OUT" "$OUT-starving"
 
 iso() { # hours-ago → ISO8601 UTC
@@ -87,7 +94,8 @@ jq -n --arg old "$(isod 60)" --arg old2 "$(isod 45)" --arg fresh "$(isod 2)" '[
 
 echo '{"critical": 0, "high": 0, "moderate": 1}' > "$OUT/alerts.json"
 
-# contribution calendar: 9 active days of the last 14
+# contribution calendar: 9 active days, all within the last 14 (well inside
+# the 21-day fitness window) → ACTIVE21 = 9
 {
   days=""
   for d in 0 1 2 4 5 7 8 11 13; do

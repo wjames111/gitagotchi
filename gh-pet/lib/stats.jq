@@ -6,7 +6,7 @@
 # Inputs (each --slurpfile, or --argjson null when absent):
 #   $user $repos $events $merged $approved $changesreq $reviewedby $starred
 #   $stale $alerts $calendar $notifications $medals $orgs $following
-# Args: $now (epoch), $login, $self ("1"/"0"), $authed ("1"/"0")
+# Args: $now (epoch), $login
 
 ($now | tonumber) as $NOW
 | (($user // [])          | .[0] // {})    as $U
@@ -30,8 +30,16 @@
   def ep(ts): ((ts // "1970-01-01T00:00:00Z") | fromdateiso8601);
   def dago(ts): (($NOW - ep(ts)) / 86400);
 
+# history honesty: sparklines re-run this program at PAST $now values against the
+# SAME cached data. Every window below is lower-bound-only (`dago < N`), so events,
+# stars, and merges that happened AFTER a past clock would leak backwards into it
+# (hunger's decay term even goes exponential for future-dated merges). Mask future
+# items at the source — a no-op at the live clock, correct at every past one.
+  ([ $EV[] | select((.created_at | fromdateiso8601) <= $NOW) ]) as $EV
+| ([ $ST[] | select((.starred_at // null) == null or ((.starred_at | fromdateiso8601) <= $NOW)) ]) as $ST
+
 # ── account & identity facts ─────────────────────────────────────────────────
-  ($U.created_at // "2020-01-01T00:00:00Z") as $created
+| ($U.created_at // "2020-01-01T00:00:00Z") as $created
 | (dago($created)) as $acct_days
 | ($U.id // 0) as $uid
 
@@ -76,7 +84,7 @@
 # 2-day half-life is deliberate weekend forgiveness: energy celebrates rest
 # gaps, so hunger shouldn't punish the same two quiet days
 | ($MG.items // []) as $mgi
-| ([ $mgi[] | (.pull_request.merged_at // .closed_at) | select(. != null) | dago(.) ]) as $mdays
+| ([ $mgi[] | (.pull_request.merged_at // .closed_at) | select(. != null) | dago(.) | select(. >= 0) ]) as $mdays
 | (([ $mdays[] | 14 * pow(0.5; . / 2) ] | add // 0) | clamp(0; 100) | round) as $hunger
 | ($mdays | length) as $merges7
 | (if ($mgi | length) > 0
@@ -345,16 +353,13 @@
   "TOP_LANG=\($top_lang | @sh)",
   "SECOND_LANG=\($second_lang | @sh)",
   "NLANGS=\($nlangs | tostring | @sh)",
-  "NREPOS=\(($RP | length) | tostring | @sh)",
   "STAGE=\($stage | @sh)",
-  "CONTRIB=\($contrib | tostring | @sh)",
 
   "HUNGER=\($hunger | tostring | @sh)",
   "ENERGY=\($energy | tostring | @sh)",
   "MOOD=\($mood.v | tostring | @sh)",
   "MOOD_BUCKET=\($mood.b | @sh)",
   "FACE_BUCKET=\($face_bucket | @sh)",
-  "MOOD_RAW=\($mood_raw | tostring | @sh)",
   "FITNESS=\($fitness | tostring | @sh)",
   "CLEAN=\($clean | tostring | @sh)",
   "CURIOSITY=\($curiosity | tostring | @sh)",
@@ -392,7 +397,6 @@
   "SLEEPING=\($sleeping | tostring | @sh)",
   "HIB=\($hib | tostring | @sh)",
   "DROWSY=\($drowsy | tostring | @sh)",
-  "NEV=\($nev | tostring | @sh)",
   "WARMTH=\((7 * $nev) | clamp(0; 100) | tostring | @sh)",
 
   "MAIL=\($mail | tostring | @sh)",
