@@ -49,7 +49,10 @@ derive_history() { # login → writes $CACHE_ROOT/$login/hist.env
     _derive_args "$login" $((now - k * 3600))
     while IFS= read -r line; do
       [[ $line =~ ^([A-Z]+)=\'(.*)\'$ ]] || continue
-      hv[${BASH_REMATCH[1]}]+="${BASH_REMATCH[2]:-0} "
+      # keep unknowns unknown: an unauthenticated pet emits HEALTH='' — faking it
+      # to 0 would paint a flat-critical health sparkline instead of "no data".
+      [[ -z ${BASH_REMATCH[2]} ]] && continue
+      hv[${BASH_REMATCH[1]}]+="${BASH_REMATCH[2]} "
     done < <(jq -n "${DARGS[@]}" -f "$LIB_DIR/stats.jq" 2>/dev/null \
              | grep -E '^(HUNGER|ENERGY|MOOD|FITNESS|CLEAN|CURIOSITY|SOCIAL|WISDOM|HEALTH|HAPPINESS)=')
   done

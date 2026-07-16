@@ -105,7 +105,7 @@ shows it. Windows are rolling and computed at refresh time — no stored counter
 |---|---|---|---|---|
 | 1 | **Hunger** (fullness) | Merged PRs, rolling 7 days | each merge contributes `14 · 0.5^(days_ago/2)`, clamp 0–100 — a full bowl takes a real multi-merge rhythm, but a weekend off doesn't empty it | eating animation when a new merge is detected live; whines at empty bowl after ~3 dry days |
 | 2 | **Energy** | Gaps in the event stream | rested if ≥1 quiet gap of 6h+ in last 24h (base 58); drained by `events_per_day / personal_baseline` sustained > 1.75× | sleeps (`zZz`) during your inactivity; frazzled sprite + eye-bags when overworked — the anti-burnout mechanic |
-| 3 | **Mood** | Net social feedback, last 7d | `stars_received + reactions_received + approvals − 2·changes_requested`, squashed into 5 buckets (ecstatic needs ≥ +25) | drives the face sprite: ecstatic / content / neutral / grumpy / miserable |
+| 3 | **Mood** | Net social feedback, last 7d | `approvals + merges_7d − 2·changes_requested`, squashed into 5 buckets (ecstatic needs ≥ +25) | drives the face sprite: ecstatic / content / neutral / grumpy / miserable |
 | 4 | **Fitness** | Contribution *consistency*, not volume | `100 · (active_days_of_last_21 / 21)^1.3` | fit pet stretches during idles; unfit pet grows a round ASCII belly |
 | 5 | **Cleanliness** | Repo hygiene on your top-N recently-pushed repos | `100 − 12·(open issues idle >30d) − 6·(open PRs idle >30d)`, floor 0 | flies (`.·°`) buzz around a messy pet; triaging = grooming |
 | 6 | **Curiosity** | Distinct repos touched (30d) + stars given + forks made (14d), new language touched (30d bonus) | `min(100, 5·min(repos,8) + 6·stars + 10·forks + 15·new_lang)` | toys scattered near the pet; bats a ball around |

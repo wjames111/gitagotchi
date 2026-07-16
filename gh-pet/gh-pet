@@ -11,7 +11,7 @@
 #        --no-scrape  skip the achievements scrape (plan.md §4)
 #        --no-links   disable OSC 8 hyperlinks
 #        --fixtures D derive the pet from recorded API fixtures (offline)
-#        --demo X     stage an animation on a loop: wake | eat | celebrate | tired | wired | curious | social | reviewer | skinny | chubby | hatch | love | sleep | fit | unfit | stretcher | fetch | messy | wise
+#        --demo X     stage an animation on a loop: wake | eat | celebrate | tired | wired | curious | social | reviewer | skinny | chubby | hatch | love | sleep | fit | unfit | stretcher | fetch | messy | wise | night | winter | spring | autumn
 #        --panel P    with --snapshot: vitals | activity | friends | feed
 
 # bash ≥ 4 required (plan.md §12); macOS ships 3.2 — hop to brew bash
@@ -66,8 +66,10 @@ while (( $# )); do
     --fixtures) shift; FIXDIR=$(cd "$1" 2>/dev/null && pwd) || die "bad fixtures dir: $1" ;;
     --version|-v) echo "gh-pet $VERSION"; exit 0 ;;
     --diag) CMD=diag ;;
-    --demo) shift; DEMO=${1:-wake} ;;
-    --panel) shift; PANEL=${1:-} ;;   # with --snapshot: vitals|activity|friends|feed
+    # only consume the next token as the value when it isn't itself a flag,
+    # so `--demo --snapshot` doesn't silently swallow --snapshot
+    --demo) if [[ ${2:-} && ${2:0:1} != - ]]; then shift; DEMO=$1; else DEMO=wake; fi ;;
+    --panel) if [[ ${2:-} && ${2:0:1} != - ]]; then shift; PANEL=$1; else PANEL=""; fi ;;   # with --snapshot: vitals|activity|friends|feed
     --help|-h) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     compare) CMD=compare; shift; CMP_LOGIN=${1:-}; [[ -n $CMP_LOGIN ]] || die "compare needs a login" ;;
     badge) CMD=badge ;;
@@ -98,7 +100,7 @@ if [[ $CMD == diag ]]; then
   [[ $COLS =~ ^[0-9]+$ ]] || COLS=0
   [[ $LINES =~ ^[0-9]+$ ]] || LINES=0
   echo "gh-pet $VERSION — render diagnostics"
-  echo "  terminal size   : ${COLS}×${LINES}   (dense needs ≥ 110×32; forced ≥ 84×26)"
+  echo "  terminal size   : ${COLS}×${LINES}   (dense is the default at every size; ≥ 110×32 shows it uncramped)"
   echo "  TERM            : ${TERM:-<unset>}"
   echo "  TERM_PROGRAM    : ${TERM_PROGRAM:-<unset>}"
   echo "  COLORTERM       : ${COLORTERM:-<unset>}"
@@ -116,17 +118,24 @@ ME=""
 if [[ -n $FIXDIR ]]; then
   ME=$(jq -r '.login // "fixture-user"' "$FIXDIR/user.json" 2>/dev/null || echo fixture-user)
 elif [[ -n $TOKEN ]]; then
-  if [[ -f $CACHE_ROOT/.me ]]; then ME=$(cat "$CACHE_ROOT/.me")
+  # cache the resolved login, but key it to a fingerprint of the token so a
+  # switched account (new token) re-resolves instead of showing the old pet.
+  # We store the fingerprint, never the token itself.
+  if have shasum; then TOKEN_FP=$(printf '%s' "$TOKEN" | shasum -a 256 | cut -c1-16)
+  else TOKEN_FP=$(printf '%s' "$TOKEN" | sha256sum | cut -c1-16); fi
+  if [[ -f $CACHE_ROOT/.me ]] && IFS='|' read -r _mefp _melogin < "$CACHE_ROOT/.me" \
+       && [[ $_mefp == "$TOKEN_FP" && -n $_melogin ]]; then
+    ME=$_melogin
   else
     ME=$(curl -sS --max-time 10 -H "Authorization: Bearer $TOKEN" "$API/user" 2>/dev/null | jq -r '.login // empty')
-    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s' "$ME" > "$CACHE_ROOT/.me"; }
+    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s|%s' "$TOKEN_FP" "$ME" > "$CACHE_ROOT/.me"; }
   fi
 fi
 TARGET=${ARG_LOGIN:-$ME}
 [[ -z $TARGET ]] && die "no login: run 'gh auth login' or pass one (gh-pet <login>)"
 SELF=0; [[ $TARGET == "$ME" || -n $FIXDIR ]] && SELF=1
 
-declare -A S F TMPF
+declare -A S F
 declare -a FR_LOGINS=() FR_SORTED=() VPOOL=() VPOOL_URL=() FLOATERS=() FL_DIR=()
 declare -A FRROW FR_FETCHED
 
@@ -155,7 +164,7 @@ VSEL=0 VX_TWO=1               # one cursor across both vitals panels
 declare -A PV
 declare -A VPET1 VPET2 VPET3   # visitor pets on the stage (social cameo)
 VPET_KEY=""
-FETCH_PID="" FETCH_KIND="" FR_PENDING="" FR_NEXT_AT=0
+FETCH_PID="" FETCH_KIND="" FR_NEXT_AT=0
 NEXT_REFRESH=0 LAST_FORCE=0
 PREV_MERGE="" PREV_MEDALS=-1 PREV_FOLLOWERS=-1 PREV_MAIL=-1 PREV_REVREQ=-1
 RESIZED=0 IN_ALT=0
@@ -737,7 +746,7 @@ fi
 first_run=0
 [[ ! -f $CACHE_ROOT/$TARGET/state.env ]] && first_run=1
 
-if (( OPT_SNAPSHOT )) || [[ $CMD == compare && $OPT_SNAPSHOT == 1 ]]; then
+if (( OPT_SNAPSHOT )); then   # compare's own --snapshot sets OPT_SNAPSHOT too
   fetch_all "$TARGET" "$SELF" >/dev/null 2>&1
   derive_state "$TARGET" || true
   load_state S "$TARGET" || die "could not derive pet for $TARGET"

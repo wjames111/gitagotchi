@@ -50,16 +50,25 @@ _badge_blink_rects() { # open_grid blink_grid → only the differing pixels
   done
 }
 
+# frame follows the derived state, same precedence as anim_update
+# (gh-pet: HIB > … > sick > … > sleep): an unwell pet reads as sick, not
+# asleep, and unknown (unauthenticated) health never triggers sick. Extracted
+# so the precedence is unit-testable in isolation (tests/run.sh).
+badge_frame() { # assoc_name → BADGE_FRAME BADGE_BLINKABLE BADGE_FAINT
+  local -n _BF=$1
+  BADGE_FRAME=idle_1 BADGE_BLINKABLE=1 BADGE_FAINT=0
+  if [[ ${_BF[HIB]:-0} == 1 ]]; then BADGE_FRAME=hibernate_1 BADGE_BLINKABLE=0
+  elif [[ -n ${_BF[HEALTH]:-} ]] && (( ${_BF[HEALTH]} < 40 )); then
+    BADGE_FRAME=sick_1 BADGE_BLINKABLE=0 BADGE_FAINT=1
+  elif [[ ${_BF[SLEEPING]:-0} == 1 ]]; then BADGE_FRAME=sleep_1 BADGE_BLINKABLE=0
+  fi
+}
+
 badge_render() { # assoc_name → SVG on stdout
   local -n BP=$1
 
-  # frame follows the derived state, same precedence as anim_update
-  local frame=idle_1 blinkable=1 faint=0
-  if [[ ${BP[HIB]:-0} == 1 ]]; then frame=hibernate_1 blinkable=0
-  elif [[ ${BP[SLEEPING]:-0} == 1 ]]; then frame=sleep_1 blinkable=0
-  elif [[ -n ${BP[HEALTH]:-} ]] && (( ${BP[HEALTH]} < 40 )); then
-    frame=sick_1 blinkable=0 faint=1
-  fi
+  badge_frame "$1"
+  local frame=$BADGE_FRAME blinkable=$BADGE_BLINKABLE faint=$BADGE_FAINT
 
   # canonical phases: the tail plants, a critical pet arrives settled on the
   # gurney — and nothing time-shaped leaks into the file

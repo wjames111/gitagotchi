@@ -59,11 +59,67 @@ assert_contains "$SNAP3" "happiness capped at 60" "insight explains the cap"
 HVAL=$(awk '/happiness/{for(i=NF;i>0;i--) if($i ~ /^[0-9]+$/){print $i; exit}}' <<<"$SNAP3")
 if [[ -n $HVAL ]] && (( HVAL <= 60 )); then ok "happiness ≤ 60 while starving (got $HVAL)"; else fail "cap not applied (got ${HVAL:-none})"; fi
 
+echo "· the misery cap listens to SURVIVAL stats ONLY (plan.md §3.1): a pet with"
+echo "  healthy survival stats but poor aspirational ones (curiosity/social/fitness/"
+echo "  wisdom < 20) is NOT capped — guards the regression that flattened friends to 60"
+_now=$(date +%s)
+_merged=$(jq -n --argjson n "$_now" '{total_count:10, items:[range(0;10)|{number:., html_url:"h", pull_request:{merged_at:(($n-3600)|todate)}}]}')
+_events=$(jq -n --argjson n "$_now" '[{type:"PushEvent",created_at:(($n-3600)|todate),repo:{name:"self/app"}},{type:"PushEvent",created_at:(($n-3600-25200)|todate),repo:{name:"self/app"}}]')
+ASP=$(jq -n -r --arg now "$_now" --arg login self \
+  --argjson user '[{"id":3151702,"login":"self","created_at":"2019-03-14T09:00:00Z"}]' \
+  --argjson merged "[$_merged]" --argjson approved '[{"total_count":20}]' \
+  --argjson alerts '[{"critical":0,"high":0,"moderate":0}]' --argjson events "[$_events]" \
+  --argjson repos null --argjson changesreq null --argjson reviewedby null --argjson starred null \
+  --argjson stale null --argjson calendar null --argjson notifications null --argjson medals null \
+  --argjson orgs null --argjson following null -f "$ROOT/lib/stats.jq" 2>&1)
+_hap=$(sed -n "s/^HAPPINESS='\([0-9]*\)'.*/\1/p" <<<"$ASP")
+_cap=$(sed -n "s/^CAPPED_BY='\(.*\)'\$/\1/p" <<<"$ASP")
+if [[ -n $_hap ]] && (( _hap > 60 )) && [[ -z $_cap ]]; then ok "aspirational stats never hard-cap (happiness $_hap > 60, uncapped)"; else fail "an aspirational stat capped a healthy pet (happiness=${_hap:-none} capped_by='$_cap')"; fi
+
+echo "· unauthenticated / public-only path (plan.md §9.2): the pure function still"
+echo "  derives when health is unknown and the contribution calendar is absent"
+UARGS=(-r --arg now "$(date +%s)" --arg login octotest)
+for f in user repos events merged approved changesreq reviewedby starred stale notifications medals orgs following; do
+  if jq -e . "fixtures/$f.json" >/dev/null 2>&1; then UARGS+=(--slurpfile "$f" "fixtures/$f.json"); else UARGS+=(--argjson "$f" null); fi
+done
+UARGS+=(--argjson alerts null --argjson calendar null)
+UNAUTH=$(jq -n "${UARGS[@]}" -f "$ROOT/lib/stats.jq" 2>&1)
+assert_contains "$UNAUTH" "HEALTH=''"        "unauth: health is unknown (null), not a fake 0 or 100"
+assert_contains "$UNAUTH" "ACT_SRC='events'" "unauth: fitness/activity fall back to the events stream"
+_uhap=$(sed -n "s/^HAPPINESS='\([0-9]*\)'.*/\1/p" <<<"$UNAUTH")
+if [[ $_uhap =~ ^[0-9]+$ ]] && (( _uhap >= 0 && _uhap <= 100 )); then ok "unauth: composite computes with the health weight redistributed (happiness $_uhap)"; else fail "unauth: happiness broke without health (got '${_uhap:-none}')"; fi
+
 echo "· tier A (--ascii) renders without unicode"
 rm -rf "$XDG_CACHE_HOME/gitagotchi"
 SNAP4=$("$ROOT/gh-pet" --fixtures fixtures --snapshot --cozy --ascii 2>&1)
 if grep -q '█\|✉\|❤' <<<"$SNAP4"; then fail "tier A leaked unicode"; else ok "tier A stays pure ASCII in chrome"; fi
 assert_contains "$SNAP4" "happiness" "tier A still renders the dashboard"
+
+echo "· drowsy (21–29 days quiet, plan.md): the pre-hibernation state — derived, and"
+echo "  distinct from both sleep (< 21) and hibernation (≥ 30), which supersedes it"
+_drow() { # quiet_days → stats.jq output
+  local q=$1 ev
+  ev=$(jq -n --argjson n "$_dnow" --argjson q "$q" '[{type:"PushEvent",created_at:(($n-$q*86400)|todate),repo:{name:"self/app"}}]')
+  jq -n -r --arg now "$_dnow" --arg login self \
+    --argjson user '[{"id":3151702,"login":"self","created_at":"2019-03-14T09:00:00Z"}]' --argjson events "[$ev]" \
+    --argjson merged null --argjson repos null --argjson approved null --argjson changesreq null \
+    --argjson reviewedby null --argjson starred null --argjson stale null --argjson alerts null \
+    --argjson calendar null --argjson notifications null --argjson medals null --argjson orgs null \
+    --argjson following null -f "$ROOT/lib/stats.jq" 2>&1
+}
+_dnow=$(date +%s)
+DR25=$(_drow 25); DR33=$(_drow 33)
+assert_contains "$DR25" "DROWSY='1'" "25 days quiet → drowsy"
+assert_contains "$DR25" "HIB='0'"    "25 days quiet → not yet hibernating"
+assert_contains "$DR33" "HIB='1'"    "33 days quiet → hibernating"
+assert_contains "$DR33" "DROWSY='0'" "hibernation supersedes drowsy (≥ 30 days)"
+
+echo "· degrade gracefully when achievements are unavailable (--no-scrape / no medals.json)"
+NM=$(mktemp -d)/nomedals; mkdir -p "$NM"; cp fixtures/*.json "$NM/"; rm -f "$NM/medals.json"
+rm -rf "$XDG_CACHE_HOME/gitagotchi"
+SNAPNM=$("$ROOT/gh-pet" --fixtures "$NM" --snapshot --no-scrape 2>&1)
+if grep -q "happiness" <<<"$SNAPNM"; then ok "--no-scrape / medals-absent pet still renders (no crash)"; else fail "medals-absent pet failed to render"; fi
+if grep -qF "PS³" <<<"$SNAPNM"; then fail "medals shelf shown without a medals source"; else ok "no medals source → shelf quietly absent"; fi
 
 echo "· dense layout (default): five panels render at 80×24"
 rm -rf "$XDG_CACHE_HOME/gitagotchi"
@@ -238,6 +294,20 @@ if [[ "$SVG1" == "$SVG2" ]]; then ok "badge: deterministic across a cache wipe";
 SVGH=$(GITAGOTCHI_PRETEND_QUIET=35 "$ROOT/gh-pet" badge --fixtures fixtures 2>&1)
 assert_contains "$SVGH" "hibernating" "badge: hibernation named on the card"
 if grep -qF 'id="blink"' <<<"$SVGH"; then fail "badge: cocoons don't blink"; else ok "badge: cocoons don't blink"; fi
+# frame precedence must match anim_update (HIB > … > sick > … > sleep): a pet
+# that is both unwell and quiet reads as sick, not merely asleep. Unit-tested
+# on the extracted badge_frame so the precedence is pinned in isolation.
+BF=$(
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/badge.sh" 2>/dev/null
+  declare -A B1=([HIB]=0 [SLEEPING]=1 [HEALTH]=30); badge_frame B1; echo "sicksleep $BADGE_FRAME $BADGE_FAINT $BADGE_BLINKABLE"
+  declare -A B2=([HIB]=0 [SLEEPING]=1 [HEALTH]=95); badge_frame B2; echo "healthysleep $BADGE_FRAME"
+  declare -A B3=([HIB]=1 [SLEEPING]=1 [HEALTH]=30); badge_frame B3; echo "hibsick $BADGE_FRAME"
+  declare -A B4=([HIB]=0 [SLEEPING]=0 [HEALTH]=""); badge_frame B4; echo "unauth $BADGE_FRAME"
+)
+assert_contains "$BF" "sicksleep sick_1 1 0"  "badge: a sick, sleeping pet reads sick (sick precedes sleep, faint, no blink)"
+assert_contains "$BF" "healthysleep sleep_1"  "badge: a healthy, sleeping pet reads asleep"
+assert_contains "$BF" "hibsick hibernate_1"   "badge: hibernation still supersedes sick and sleep"
+assert_contains "$BF" "unauth idle_1"         "badge: unknown (unauth) health never triggers the sick frame"
 
 echo "· state legality table (§8.4): the single source of truth for which"
 echo "  visual layers may coexist — no sleeping-reader, no sick ball-batter,"

@@ -315,8 +315,6 @@ DOOOSD
 # shoulder · Y shaft light · Z shaft dark · T red binding · H tap dust; the
 # knuckles/paw-outline/brow reuse K, the paw fill is the body's own O.
 
-pix_species_count() { printf '%s' "${#PIX_SPECIES[@]}"; }
-
 # vertical trim: drop fully-transparent pixel-row PAIRS of THIS frame, so pets
 # stand on the ground (per-frame: eat frames carry bowl pixels at the bottom,
 # hibernate cocoons are short — bottom-aligning per frame keeps feet grounded).

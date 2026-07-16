@@ -61,8 +61,9 @@ Keys: `f` friends · `s` stat detail (every low bar links to the page that fixes
 
 ## Dense mode (btop-style)
 
-On terminals ≥ 110×32 with truecolor, the **dense layout** is the default
-(`--dense` / `--cozy` force it): five titled panels whose border color is their
+The **dense layout** is the default at every size (it compresses to fit; ≥ 110×32
+with truecolor shows it uncramped — `--dense` / `--cozy` force the choice): five
+titled panels whose border color is their
 identity — pet (linguist color) · vitals with 10-refresh sparklines and
 red→amber→green gradient meters · a 60-day events/day graph with your dashed
 90d baseline, rest-gap and merge annotations · a friends table with mini-meters
@@ -93,11 +94,12 @@ linguist color) → ANSI-256 half-block → pure-ASCII sprites (`sprites/*.sprit
 ## The stats (all 0–100, all named to their GitHub source)
 
 hunger ← merged PRs (7d, decays ½ every 2d) · energy ← rest gaps vs *your own*
-baseline · mood ← approvals − changes-requested · fitness ← active days of last 14 ·
-cleanliness ← stale issues/PRs on your top repos · curiosity ← stars/forks given,
-new languages · social ← comments on others' repos · wisdom ← reviews given (slow,
+baseline · mood ← approvals + merges − 2× changes-requested · fitness ← active days
+of last 21 · cleanliness ← stale issues/PRs on your top repos · curiosity ← stars/forks
+given, new languages · social ← comments on others' repos · wisdom ← reviews given (slow,
 ~monotonic) · health ← Dependabot alerts (self only) · happiness ← weighted composite
-with the **misery cap**: any stat < 20 caps happiness at 60.
+with the **misery cap**: any *survival* stat (hunger, energy, mood, cleanliness,
+health) < 20 caps happiness at 60 — the slow, aspirational stats never hard-cap.
 
 No activity for 21 days → drowsy; 30 days → hibernation (stats freeze — vacations
 are healthy, this is not a punishment).
@@ -117,7 +119,7 @@ Embed it with the workflow in [templates/pet-badge.yml](templates/pet-badge.yml)
 ![my gitagotchi](pet.svg)
 ```
 
-It runs on a 6-hour cron **plus** a push trigger — cron because the pet
+It runs on an hourly cron **plus** a push trigger — cron because the pet
 changes even when GitHub doesn't (hunger decays, sleep and hibernation are
 wall-clock), and there is no cross-repo "this user did something" trigger.
 The SVG is deterministic for a given pet state, so the commit-if-changed

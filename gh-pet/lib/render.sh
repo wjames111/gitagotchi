@@ -316,7 +316,12 @@ pet_compose() { # assoc_name frame blink faint [flip]
         else GURNEY_OFF_AT="" GURNEY_ID=""; fi
       fi
     else
-      GURNEY_PREV=0
+      # this pet isn't on a gurney. GURNEY_PREV/GURNEY_AT are the tracked
+      # patient's edge-state — composing some OTHER pet (friends preview,
+      # compare) must NOT clobber them, or the next self-compose misreads a
+      # rising edge and replays the entrance. Only tear down when it's our pet
+      # recovering in a snapshot (the animated exit runs in the elif above).
+      if [[ ${GURNEY_ID:-} == "$gid" ]]; then GURNEY_PREV=0 GURNEY_ID="" GURNEY_OFF_AT=""; fi
     fi
     # review duty (≥3 outbound reviews this week): the pet stands guard with
     # the spear (1). Its own determined brow takes over, so the curiosity brow
@@ -405,7 +410,7 @@ voice_pool() { # assoc_name self → fills VPOOL[] + VPOOL_URL[] (parallel)
     fi
     return
   fi
-  local d_dry=$(( ${P[MERGE_AGO_H]:-'-1'} >= 0 ? P[MERGE_AGO_H] / 24 : 8 ))
+  local d_dry=$(( ${P[MERGE_AGO_H]:--1} >= 0 ? P[MERGE_AGO_H] / 24 : 8 ))
   if [[ ${P[HIB]} == 1 ]]; then
     if (( ${P[DAYS_QUIET]:-0} >= 90 )); then
       vline "${P[DAYS_QUIET]} days quiet. The cobwebs have cobwebs — the first push sweeps them away." "$u_prof"
@@ -415,7 +420,7 @@ voice_pool() { # assoc_name self → fills VPOOL[] + VPOOL_URL[] (parallel)
     fi
     return
   fi
-  if (( ${P[MERGE_AGO_H]:-'-1'} >= 0 && P[MERGE_AGO_H] < 24 )); then
+  if (( ${P[MERGE_AGO_H]:--1} >= 0 && P[MERGE_AGO_H] < 24 )); then
     vline "Merged #${P[MERGE_NUM]} $((P[MERGE_AGO_H] == 0 ? 1 : P[MERGE_AGO_H])) hours ago — $n is well fed." "${P[MERGE_URL]:-$u_merged}"
     (( ${P[MERGES7]} > 1 )) && vline "${P[MERGES7]} merges this week. The bowl runneth over." "$u_merged"
   fi

@@ -556,6 +556,12 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   panel_frame $pv_top 0 "$pw" "$pv_h" "$BR_PET" "$pt_title" "home"
   local piw=$((pw - 4)) pix0=2
   local ground=$(( pv_top + pv_h - 5 ))
+  # NB stage_h here evaluates to `ground` (the sibling `stage_top` isn't yet
+  # visible within a single `local`), NOT `ground - stage_top`. That value is
+  # load-bearing: the weather systems below (stars/rain/fireflies/leaves/clouds)
+  # use stage_h as their vertical-spread modulus and are tuned to it against the
+  # seasons mockup. Splitting the declaration to "fix" it detunes them (the
+  # summer-night lawn loses its fireflies), so it stays as one statement.
   local stage_top=$(( pv_top + 1 )) stage_h=$(( ground - stage_top ))
 
   # medal shelf: solid color chips top-right — each medal wears its own color.

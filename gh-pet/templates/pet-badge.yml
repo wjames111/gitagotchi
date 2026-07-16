@@ -33,6 +33,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# serialize runs: an hourly cron firing while a push-triggered run is mid-commit
+# would otherwise race the push and fail non-fast-forward. Queue, don't cancel,
+# so a pending badge update is never dropped.
+concurrency:
+  group: pet-badge
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -59,5 +66,6 @@ jobs:
             git config user.name "gitagotchi"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "pet: state changed"
+            git pull --rebase --autostash origin main || true
             git push
           fi
