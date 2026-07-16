@@ -174,13 +174,41 @@ SNAPM=$(GITAGOTCHI_PRETEND_CLEAN=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLO
 assert_contains "$SNAPM" "146;100;60" "filthy stage shows pixel poop (its brown)"
 SNAPM2=$(GITAGOTCHI_PRETEND_CLEAN=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 if grep -qF "146;100;60" <<<"$SNAPM2"; then fail "spotless stage stays spotless"; else ok "spotless stage stays spotless"; fi
-echo "· wisdom beard: high wisdom grows chin pixels, shade from created_at"
-# the shade is identity: sha256("2019-03-14T09:00:00Z")[0] % 10 → platinum,
-# pinned like the name — recoloring the table re-dyes every beard in the wild
+echo "· wisdom beard: high wisdom grows chin pixels, shade from created_at + id"
+# the shade is identity: sha256("2019-03-14T09:00:00Z:3151702") → hue/sat/light,
+# pinned like the name — re-tuning the derivation re-dyes every beard in the wild
 SNAPB=$(GITAGOTCHI_PRETEND_WISDOM=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPB" "226;208;160" "sage pet wears the beard in its own shade (platinum)"
+assert_contains "$SNAPB" "150;221;18" "sage pet wears the beard in its own shade"
 SNAPB2=$(GITAGOTCHI_PRETEND_WISDOM=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-if grep -qF "226;208;160" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
+if grep -qF "150;221;18" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
+
+# The point of the derivation is UNIQUENESS — the reason it was rewritten. The
+# old table quantized to 10 shades and two pets on one stage (wjames111/canac)
+# wore the same beard. These pin the properties, not just the fixture's value.
+BEARDU=$(
+  source "$ROOT/lib/util.sh" 2>/dev/null
+  # same signup second, different accounts — created_at alone could not tell
+  # these apart, which is why the id is in the hash
+  printf 'sameinstant %s %s\n' "$(beard_color_for 2019-03-14T09:00:00Z 111)" \
+                               "$(beard_color_for 2019-03-14T09:00:00Z 222)"
+  # stats.jq substitutes ONE constant date when user.json has not landed; that
+  # used to dye every such pet identically
+  printf 'nodata %s %s\n' "$(beard_color_for 2020-01-01T00:00:00Z 4242)" \
+                          "$(beard_color_for 2020-01-01T00:00:00Z 9999)"
+  # same account, twice — the beard must never change color
+  printf 'stable %s %s\n' "$(beard_color_for 2018-05-31T20:44:17Z 39811085)" \
+                          "$(beard_color_for 2018-05-31T20:44:17Z 39811085)"
+)
+u_pair() { local l; l=$(grep "^$1 " <<<"$BEARDU"); [[ ${l#* } == *" "* ]] && printf '%s' "${l#* }"; }
+a=$(u_pair sameinstant); [[ ${a% *} != "${a#* }" ]] \
+  && ok "two accounts created the same second wear different beards" \
+  || fail "two accounts created the same second wear different beards ($a)"
+a=$(u_pair nodata); [[ ${a% *} != "${a#* }" ]] \
+  && ok "pets awaiting user.json do not all share one beard" \
+  || fail "pets awaiting user.json do not all share one beard ($a)"
+a=$(u_pair stable); [[ ${a% *} == "${a#* }" ]] \
+  && ok "a beard is stable: same account, same shade, forever" \
+  || fail "a beard is stable: same account, same shade, forever ($a)"
 
 # The beard hunts for the face — the mouth is "the first KK+ run below the
 # eyes" — so it MUST read a pristine grid. An elder's spectacle rim (and a
@@ -217,12 +245,57 @@ fi
 # and the glasses still get drawn — the fix must not cost the elder its specs
 assert_contains "$BEARDA" "DKKWKKKKKKKWKD" "the bespectacled elder still wears its glasses"
 
+# A NAP MUST NOT SHAVE AN ELDER. 14 of the 50 species author sleep_*/sick_*/
+# eat_2 with no K anywhere (a closed eye is an interior D), so the face hunt
+# found nothing and the beard vanished — while gate_expr swears it survives
+# sleep and sickness. eat_2 made it flicker mid-merge. Every one of these
+# frames must wear the beard in the SAME place idle_1 does (pix_beard_anchor
+# borrows the canonical pose). The cat carries a K on every frame and cannot
+# catch this — drive a bear, and sweep every species so a new sprite can't
+# reintroduce it.
+BEARDN=$(
+  BASE_DIR="$ROOT/lib" SPRITE_DIR="$ROOT/sprites"
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/pixel.sh" 2>/dev/null
+  pix_db_load
+  PIX_MODE=T PIX_CAPTURE=1 PIX_BEARD_RGB="150;221;18"
+  bald=0
+  for id in "${PIX_SPECIES[@]}"; do
+    for fr in idle_1 idle_2 eat_1 eat_2 eat_3 sick_1 sick_2 sleep_1 sleep_2 celebrate_1 celebrate_2; do
+      [[ -n ${PIXF[$id/$fr]:-} ]] || continue
+      PC_KEY=""; pix_palette "$id" "#3178c6" 0
+      pix_render "$id" "$fr" 0 0 0 0 0 0 0 0 0 0 2 0 0 "" 0
+      c=0; for r in "${PIXGRID[@]}"; do t=${r//[!B]/}; c=$((c+${#t})); done
+      (( c == 0 )) && { bald=$((bald+1)); printf 'bald %s/%s\n' "$id" "$fr"; }
+    done
+  done
+  printf 'baldcount %s\n' "$bald"
+  # the cocoon is the ONE frame that legitimately hides it
+  PC_KEY=""; pix_palette bear "#3178c6" 0
+  pix_render bear hibernate_1 0 0 0 0 0 0 0 0 0 0 2 0 0 "" 0
+  c=0; for r in "${PIXGRID[@]}"; do t=${r//[!B]/}; c=$((c+${#t})); done
+  printf 'cocoon %s\n' "$c"
+  # the sleeping bear's beard must hang exactly where the waking bear's does.
+  # PIXCACHE=() is load-bearing: pix_render returns EARLY on a cache hit, and
+  # PIX_CAPTURE fills PIXGRID only on the miss path — the sweep above already
+  # cached these exact keys, so without the reset these assert against whatever
+  # species happened to render last.
+  for fr in idle_1 sleep_1; do
+    PIXCACHE=(); PC_KEY=""; pix_palette bear "#3178c6" 0
+    pix_render bear "$fr" 0 0 0 0 0 0 0 0 0 0 2 0 0 "" 0
+    printf "$fr %s\n" "${PIXGRID[@]}"
+  done
+)
+assert_contains "$BEARDN" "baldcount 0" "no species is shaved by a nap, an illness or a mid-merge bite"
+assert_contains "$BEARDN" "cocoon 0"    "the hibernation cocoon still hides the beard"
+assert_contains "$BEARDN" "idle_1 .....DOROBBKKBBOROD....." "the waking bear wears its beard around its mouth"
+assert_contains "$BEARDN" "sleep_1 .....DOROBBDDBBOROD....." "the sleeping bear wears it in the very same place"
+
 # the beard is earned: a guest turning up must not shave the host. Everyone
 # shrinks to half scale while hosting, and the shrink used to drop it.
 SNAPH=$(GITAGOTCHI_PRETEND_WISDOM=95 GITAGOTCHI_PRETEND_VISITORS="octotest" \
   COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 \
   "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPH" "226;208;160" "a hosting pet keeps the beard it earned (half scale)"
+assert_contains "$SNAPH" "150;221;18" "a hosting pet keeps the beard it earned (half scale)"
 echo "· curiosity (≥75): the pet holds and reads a book (gitagotchi-reading.html)"
 SNAPBK=$(GITAGOTCHI_PRETEND_VIG=books COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 assert_contains "$SNAPBK" "47;95;176"   "reading: the held book's blue cover renders"

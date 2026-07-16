@@ -123,7 +123,7 @@ load_state() {
   # personalization: your own pet is always Zeruko (friends keep their derived
   # names). Skipped under --fixtures so the test personas derive normally.
   [[ -z ${FIXDIR:-} ]] && same_login "$login" "${ME:-}" && A[NAME]=Zeruko
-  A[BEARD_RGB]=$(beard_color_for "${A[CREATED]:-}")
+  A[BEARD_RGB]=$(beard_color_for "${A[CREATED]:-}" "${A[ID]:-0}")
   A[COLOR_HEX]=$(pet_color_hex "${A[TOP_LANG]:-}")
   A[COLOR256]=$(hex_to_256 "${A[COLOR_HEX]}")
   A[PATTERN]=$(pattern_for_lang "${A[SECOND_LANG]:-}")

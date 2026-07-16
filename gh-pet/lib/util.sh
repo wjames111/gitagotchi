@@ -161,20 +161,55 @@ seed_init() { # $1 = numeric user id
   for ((i=0; i<32; i++)); do SEED[i]=$((16#${hex:i*2:2})); done
 }
 
-# beard shade (plan.md §2): another identity trait, derived from another
-# artifact — sha256 of the account's CREATED timestamp (immutable, so the
-# beard never changes color). Ten natural hair shades; the moment you signed
-# up decided how you'd grey.
-HAIR_SHADES=("209;212;218" "236;237;240" "156;160;168" "106;72;44" "74;52;36"
-             "38;36;40" "154;77;36" "178;89;48" "205;168;96" "226;208;160")
-#             silver        snow          ash grey      chestnut    dark brown
-#             black         auburn        copper        blonde      platinum
-beard_color_for() { # $1 = CREATED iso timestamp ("" → silver default)
-  local created=$1 hex
-  [[ -z $created ]] && { printf '%s' "${HAIR_SHADES[0]}"; return; }
-  if have shasum; then hex=$(printf '%s' "$created" | shasum -a 256 | cut -d' ' -f1)
-  else hex=$(printf '%s' "$created" | sha256sum | cut -d' ' -f1); fi
-  printf '%s' "${HAIR_SHADES[$(( 16#${hex:0:2} % 10 ))]}"
+# hsl → "r;g;b", integer math ×1000 (bash has no floats). The awk twin inside
+# pix_palette hue-shifts the pelt; this one exists because the beard is dyed in
+# bash, before any palette runs.
+hsl_rgb() { # h 0-359 · s 0-100 · l 0-100
+  local h=$1 c x m r g b
+  local L=$(( $3 * 10 )) S=$(( $2 * 10 ))
+  local d=$(( 2 * L - 1000 )); (( d < 0 )) && d=$(( -d ))
+  c=$(( (1000 - d) * S / 1000 ))
+  local t=$(( (h * 1000 / 60) % 2000 ))
+  local u=$(( t - 1000 )); (( u < 0 )) && u=$(( -u ))
+  x=$(( c * (1000 - u) / 1000 ))
+  m=$(( L - c / 2 ))
+  case $(( h / 60 )) in
+    0) r=$c; g=$x; b=0  ;;
+    1) r=$x; g=$c; b=0  ;;
+    2) r=0;  g=$c; b=$x ;;
+    3) r=0;  g=$x; b=$c ;;
+    4) r=$x; g=0;  b=$c ;;
+    *) r=$c; g=0;  b=$x ;;
+  esac
+  printf '%s;%s;%s' $(( (r + m) * 255 / 1000 )) $(( (g + m) * 255 / 1000 )) \
+                    $(( (b + m) * 255 / 1000 ))
+}
+
+# beard shade (plan.md §2): an identity trait, sha256 of the account's CREATED
+# timestamp AND its numeric id — both immutable, so the beard never changes
+# color. The id is what makes it UNIQUE: created_at alone collides (two
+# accounts signing up the same second share a beard), and stats.jq substitutes
+# one CONSTANT date whenever user.json hasn't landed, which dyed every such pet
+# the same shade — the bug this replaced.
+#
+# The hue is the FULL circle, not a natural-hair gamut: this is dyed hair, not
+# greying. The old table quantized to ten shades, of which silver/snow/ash all
+# read as one pale grey and chestnut/dark-brown/black as one near-black — four
+# perceptual families, so any four pets on a stage were a coin flip to wear the
+# same beard (they did: wjames111 and canac both hashed to chestnut). Continuous
+# hue × 31 saturations × 23 lightnesses ≈ 257k shades — twins effectively gone.
+# Saturation floors at 55 so no shade washes out to grey; lightness stays in
+# 40-62 so it survives BOTH the ×0.45 faint dim and the night moonlit() pass.
+#
+# ██ PINNED, like gen_name — nothing is stored, so a pet's beard exists ONLY as
+# this mapping. Any edit here re-dyes every beard in the wild. Version it,
+# don't tune it in place.
+beard_color_for() { # $1 = CREATED iso timestamp · $2 = numeric user id
+  local src="$1:${2:-0}" hex
+  if have shasum; then hex=$(printf '%s' "$src" | shasum -a 256 | cut -d' ' -f1)
+  else hex=$(printf '%s' "$src" | sha256sum | cut -d' ' -f1); fi
+  hsl_rgb $(( 16#${hex:0:4} % 360 )) $(( 55 + 16#${hex:4:2} % 31 )) \
+          $(( 40 + 16#${hex:6:2} % 23 ))
 }
 
 # name generator (plan.md §2.1) — ~2×10⁸ distinct names. Onset clusters,

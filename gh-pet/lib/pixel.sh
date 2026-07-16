@@ -420,7 +420,7 @@ pix_palette() { # species_id linguist_hex faint(0/1)
   local l v
   while IFS='=' read -r l v; do [[ -n $l ]] && PC[$l]=$v; done <<<"$out"
   # the beard letter (wisdom, §6.7): its shade is an identity trait — derived
-  # from the account's CREATED timestamp (beard_color_for), handed in via
+  # from the account's CREATED timestamp AND id (beard_color_for), handed in via
   # PIX_BEARD_RGB by pet_compose. Never hue-shifted with the pelt; painted by
   # pix_apply_beard, absent from every authored grid, so it costs nothing.
   local brgb=${PIX_BEARD_RGB:-209;212;218}
@@ -764,6 +764,33 @@ pix_find_anchor() { # nameref grid — sets BEARD_ROW / BEARD_COL (row < 0 = no 
   fi
   (( arow < 0 )) && { arow=$(( er + 2 )); ac=$eyeC; }
   BEARD_ROW=$arow BEARD_COL=$ac
+}
+
+# the face hunt with its last resort: the CANONICAL POSE. 14 of the 50 species
+# (chick penguin bear monkey otter owl duck parrot bat jellyfish turtle fish
+# whale snake) author sleep_*/sick_*/eat_2 with NO K ANYWHERE — a closed eye is
+# an interior D (a DD pair inside the body's O, or a lone D inside a W eye
+# patch) — so pix_find_anchor's mouth hunt AND its bare-K last resort both come
+# up empty and the beard silently VANISHED. gate_expr keeps the beard through
+# sleep and sickness on purpose (it's earned; only the cocoon hides it), so the
+# bug shaved an elder for a nap, for an illness, and for every second bite of a
+# merged PR — a flicker, since eat_1/eat_3 kept it. The cat carries a K on every
+# frame, which is why the pinned cat test never saw this.
+#
+# idle_1 resolves for all 50, and every frame is authored on the same 24×18
+# canvas with the face in the same place, so ITS anchor puts the beard where the
+# waking pet wears it. Strictly a fallback — a frame that finds its own face is
+# untouched. Takes the grid by NAME (no nameref chain) and restores the eye span:
+# bags/bigeye/brows read EYE_ROW after us and must still see THIS frame's eyes.
+pix_beard_anchor() { # species_id · grid_var_name — pix_find_eyes already ran on it
+  pix_find_anchor "$2"
+  (( BEARD_ROW >= 0 )) && return
+  local -a ig; local IFS=$'\n'; ig=(${PIXF[$1/idle_1]:-}); unset IFS
+  (( ${#ig[@]} )) || return
+  local er=$EYE_ROW a=$E1S b=$E1E c=$E2S d=$E2E
+  pix_find_eyes ig
+  pix_find_anchor ig
+  EYE_ROW=$er E1S=$a E1E=$b E2S=$c E2E=$d
 }
 
 pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
@@ -1235,7 +1262,7 @@ pix_render() {
   # find the face while the grid is still pristine: the spectacle rim and the
   # dilated pupil both paint K under the eyes, and the mouth hunt would take
   # them for a chin (see pix_find_anchor)
-  (( beard != 0 )) && pix_find_anchor g
+  (( beard != 0 )) && pix_beard_anchor "$id" g
   (( bigeye )) && pix_apply_bigeyes g
   (( brows )) && pix_apply_brows g "$bigeye"
   [[ $specs == 1 ]] && pix_apply_specs g
@@ -1465,7 +1492,7 @@ pix_render_half() { # species_id linguist_hex [frame] [beard] → PIXH[] (visibl
   if (( beard != 0 )); then
     EYE_ROW=-1
     pix_find_eyes g
-    pix_find_anchor g
+    pix_beard_anchor "$id" g
     pix_apply_beard g "$beard"
   fi
   local trim r0 r1; trim=$(pix_trim "$id" "$frame"); r0=${trim%% *}; r1=${trim##* }
