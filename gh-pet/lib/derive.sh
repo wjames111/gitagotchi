@@ -5,17 +5,31 @@
 DERIVE_INPUTS=(user repos events merged approved changesreq reviewedby starred
                stale alerts calendar notifications medals orgs following)
 
-_derive_args() { # login now → fills DARGS[]
-  local login=$1 now=$2 f
+# _derive_file_args login → fills DFILES[] with the per-input jq args.
+# Each input is probed with `jq -e .` because a half-written cache file must
+# read as absent (--argjson null) rather than abort the whole derive. That is
+# one jq fork PER INPUT, and DERIVE_INPUTS has 15 — so this is the expensive
+# half of building the args, and it depends only on WHICH files are valid.
+# Callers that sweep the same files repeatedly (derive_history) hoist it out
+# of their loop; see the note there.
+_derive_file_args() { # login → fills the caller's DFILES[]
+  local login=$1 f
   local dir="$CACHE_ROOT/$login"
-  DARGS=(-r --arg now "$now" --arg login "$login")
+  DFILES=()
   for f in "${DERIVE_INPUTS[@]}"; do
     if [[ -s $dir/$f.json ]] && jq -e . "$dir/$f.json" >/dev/null 2>&1; then
-      DARGS+=(--slurpfile "$f" "$dir/$f.json")
+      DFILES+=(--slurpfile "$f" "$dir/$f.json")
     else
-      DARGS+=(--argjson "$f" null)
+      DFILES+=(--argjson "$f" null)
     fi
   done
+}
+
+_derive_args() { # login now → fills DARGS[]
+  local login=$1 now=$2
+  local -a DFILES
+  _derive_file_args "$login"
+  DARGS=(-r --arg now "$now" --arg login "$login" "${DFILES[@]}")
 }
 
 derive_state() { # login → writes $CACHE_ROOT/$login/state.env
@@ -44,9 +58,15 @@ derive_history() { # login → writes $CACHE_ROOT/$login/hist.env
   local now k key line
   now=$(date +%s)
   local -A hv=()
-  local -a DARGS
+  local -a DARGS DFILES
+  # The sweep re-evaluates the SAME cache files at 30 different `now` values —
+  # only --arg now changes. Probing the inputs per iteration forked jq 30×15 =
+  # 450 times and was 2.2s of a 4s cold start, so the probe is hoisted here:
+  # the files cannot change under us mid-sweep (a refresh derives in its own
+  # subshell, §P4), and `now` is the only thing the loop varies.
+  _derive_file_args "$login"
   for ((k=29; k>=0; k--)); do
-    _derive_args "$login" $((now - k * 3600))
+    DARGS=(-r --arg now "$(( now - k * 3600 ))" --arg login "$login" "${DFILES[@]}")
     while IFS= read -r line; do
       [[ $line =~ ^([A-Z]+)=\'(.*)\'$ ]] || continue
       # keep unknowns unknown: an unauthenticated pet emits HEALTH='' — faking it

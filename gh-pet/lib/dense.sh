@@ -18,7 +18,21 @@ RGB_INK="230;237;243"    RGB_VOICE="179;186;194" RGB_PINK="247;120;186"
 RGB_GROUND="44;52;64"    RGB_SEP="38;44;51"      # .ground #2c3440 · .vsep #262c33
 ACT_G0="22;27;34" ACT_G1="14;68;41" ACT_G2="0;109;50" ACT_G3="38;166;65" ACT_G4="57;211;83"
 
-fgt() { printf '\e[38;2;%sm' "$1"; }
+# fgt runs ~50×/frame, almost all of it from per-cell loops (meters, sparklines,
+# the graph) — and `$(fgt …)` forks a subshell EVERY time, which was 25ms of a
+# 260ms draw. The escape for a given rgb never changes, so:
+#   fgt_v rgb → sets FGT in place, memoised: no fork, no printf on a repeat.
+#   fgt  rgb → the $( … ) form, kept for the ~140 cold call sites.
+# Hot loops call fgt_v and read $FGT.
+declare -A _FGT
+FGT=""
+fgt_v() { # rgb → FGT
+  FGT=${_FGT[$1]:-}
+  [[ -n $FGT ]] && return
+  printf -v FGT '\e[38;2;%sm' "$1"
+  _FGT[$1]=$FGT
+}
+fgt() { fgt_v "$1"; printf '%s' "$FGT"; }
 hex_to_rgb() { local h=${1#\#}; printf '%d;%d;%d' $((16#${h:0:2})) $((16#${h:2:2})) $((16#${h:4:2})); }
 
 dense_active() {
@@ -36,32 +50,40 @@ scr_put() { # row x len colored
   (( x < 0 || x + len > COLS )) && return
   DROW[row]+="${x}${US}${len}${US}${4}${RSEP}"
 }
+# Segments arrive in draw order and must emit in x order (the skip-on-overlap
+# rule needs left-to-right). This used to selection-sort them — O(n²) with ~26
+# segments a row, 57ms of a 260ms frame — and split each one with `read <<<`,
+# which spills a here-string to a temp file per segment. Both are gone:
+#
+#   · x is bounded by COLS, so the segments BUCKET by x in one pass (O(n)) and
+#     emit by walking lo..hi. No comparisons, no re-scan, no unset.
+#   · the three fields come out by parameter expansion — no fork, no temp file.
+#
+# Ties keep the old behaviour: the first scr_put at a given x wins, and a later
+# one is dropped exactly as the sort-then-skip did.
 scr_emit() {
   SCREEN=()
-  local i seg x len str
+  local i seg x len str rest lo hi cursor out
   for ((i=0; i<LINES; i++)); do
-    local out="" cursor=0
-    local -a xs=() ls=() ss=()
+    if [[ -z ${DROW[i]} ]]; then SCREEN+=(""); continue; fi
+    out="" cursor=0 lo=$COLS hi=-1
+    local -a bl=() bs=()
     local IFS=$RSEP
     for seg in ${DROW[i]}; do
       [[ -z $seg ]] && continue
-      IFS=$US read -r x len str <<<"$seg"
-      xs+=("$x"); ls+=("$len"); ss+=("$str")
+      x=${seg%%"$US"*}; rest=${seg#*"$US"}
+      len=${rest%%"$US"*}; str=${rest#*"$US"}
+      [[ -n ${bl[x]:-} ]] && continue      # first put at this x wins
+      bl[x]=$len; bs[x]=$str
+      (( x < lo )) && lo=$x
+      (( x > hi )) && hi=$x
     done
     unset IFS
-    local n=${#xs[@]} j
-    while :; do
-      local best=-1
-      for ((j=0; j<n; j++)); do
-        [[ -z ${xs[j]:-} ]] && continue
-        if (( best == -1 || xs[j] < xs[best] )); then best=$j; fi
-      done
-      (( best == -1 )) && break
-      x=${xs[best]}; len=${ls[best]}; str=${ss[best]}; unset "xs[best]"
-      if (( x >= cursor )); then
-        (( x > cursor )) && out+=$(repeat_str " " $((x - cursor)))
-        out+="$str"; cursor=$((x + len))
-      fi
+    for ((x=lo; x<=hi; x++)); do
+      [[ -n ${bl[x]:-} ]] || continue
+      (( x < cursor )) && continue         # overlapped by an earlier segment
+      (( x > cursor )) && { printf -v _pad '%*s' $(( x - cursor )) ''; out+=$_pad; }
+      out+=${bs[x]}; cursor=$(( x + bl[x] ))
     done
     SCREEN+=("$out")
   done
@@ -165,9 +187,12 @@ scene_blit() { # top left
 panel_frame() {
   local top=$1 left=$2 w=$3 h=$4 rgb=$5 title=$6 key=$7
   local c f b tc
-  c=$(fgt "$rgb"); f=$(fgt "$RGB_FAINT"); b=$C_BOLD
+  # five panels a frame, three colours each — fgt_v keeps them out of subshells
+  fgt_v "$rgb"; c=$FGT
+  fgt_v "$RGB_FAINT"; f=$FGT
+  b=$C_BOLD
   tc=$c
-  if [[ -n ${PF_TITLE_RGB:-} ]]; then tc=$(fgt "$PF_TITLE_RGB"); PF_TITLE_RGB=""; fi
+  if [[ -n ${PF_TITLE_RGB:-} ]]; then fgt_v "$PF_TITLE_RGB"; tc=$FGT; PF_TITLE_RGB=""; fi
   # a title row may never exceed w: the key hint yields first, then the title
   if [[ -n $title ]] && (( ${#title} + 8 + (${#key} > 0 ? ${#key} + 2 : 0) > w )); then key=""; fi
   if [[ -n $title ]] && (( ${#title} + 8 > w )); then title=$(trunc "$title" $(( w > 9 ? w - 8 : 1 ))); fi
@@ -218,9 +243,10 @@ dmeter() { # value cells frozen → DM (visible width = cells)
   for ((i=0; i<n; i++)); do
     if (( v * n > i * 100 )); then
       # hibernation freezes bars ice-blue (ux-spec §9 state treatments)
-      if (( fro )); then out+="$(fgt "$RGB_ICE")▆"
-      else out+="$(fgt "${cols[i]}")▆"; fi
-    else out+="$(fgt "$RGB_TRACK")▆"; fi
+      if (( fro )); then fgt_v "$RGB_ICE"
+      else fgt_v "${cols[i]}"; fi
+    else fgt_v "$RGB_TRACK"; fi
+    out+="${FGT}▆"
   done
   DM="${out}${RS}"
   DMETER_CACHE[$ck]=$DM
@@ -485,8 +511,16 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   local avail=$(( LINES - 2 ))
   local act_h=7 ff_h=4
   local pv_h=$(( avail - act_h - ff_h ))
-  if (( pv_h > 17 )); then      # 17: two rows of sky above a 9-row pet
-    local extra=$(( pv_h - 17 )); pv_h=17
+  # sky budget: pet_top = pv_top + pv_h - 5 - PET_H and stage_top = pv_top + 1,
+  # so two rows of sky above the pet means pv_h = PET_H + 8. That is the old
+  # constant 17 for today's 9-row pet, and 26 for an 18-row one — read off the
+  # sprite grid (pix_pet_rows) rather than hardcoded, so taller art moves the
+  # panel with it instead of clipping the pet's head against a stale number.
+  # NB pix_pet_rows sets PET_ROWS in place; $(…) here would fork every frame.
+  pix_pet_rows "${P[SPECIES]:-}"
+  local pv_cap=$(( PET_ROWS + 8 ))
+  if (( pv_h > pv_cap )); then
+    local extra=$(( pv_h - pv_cap )); pv_h=$pv_cap
     local a=$(( extra < 4 ? extra : 4 )); act_h=$((act_h + a)); extra=$((extra - a))
     ff_h=$(( ff_h + extra ))
   elif (( pv_h < 11 )); then

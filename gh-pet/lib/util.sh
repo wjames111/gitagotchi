@@ -241,10 +241,16 @@ pet_color_hex() { # $1 = top language ("" → seed fallback)
 # ── misc ────────────────────────────────────────────────────────────────────
 clampi() { local v=$1; (( v < $2 )) && v=$2; (( v > $3 )) && v=$3; printf '%s' "$v"; }
 
+# Built by printf padding rather than a concat loop: this is called ~100×/frame
+# (every pad, rule and gap), and appending one char at a time made it 76ms of a
+# 420ms draw. `%*s` produces the run in one shot; the substitution swaps in the
+# glyph. A count ≤ 0 must yield "" — the old loop simply didn't iterate.
 repeat_str() { # char count
-  local out="" i
-  for ((i=0; i<$2; i++)); do out+=$1; done
-  printf '%s' "$out"
+  (( $2 > 0 )) || return 0
+  local out
+  printf -v out '%*s' "$2" ''
+  [[ $1 == " " ]] && { printf '%s' "$out"; return; }
+  printf '%s' "${out// /$1}"
 }
 
 padw() { # string width — pad by CHARACTER count (printf %-Ns pads by bytes,
