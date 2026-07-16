@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitagotchi — neon sign</title>
+<style>
+  :root{--bg:#04040a; --ink:#e6edf3; --muted:#8b949e; --faint:#484f58; --border:#232838}
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:
+      radial-gradient(120% 90% at 50% 8%, #14122a 0%, #0a0a18 42%, #04040a 100%);
+    color:var(--ink); padding:26px 18px 50px; min-height:100vh;
+    font-family:ui-monospace,'SFMono-Regular','JetBrains Mono','Fira Code',Menlo,Consolas,monospace;
+    font-size:13px}
+  .page{max-width:1000px; margin:0 auto}
+  h1{font-size:16px; margin:0 0 4px}
+  p.note{color:var(--muted); margin:0 0 20px; max-width:74ch}
+  .stage{position:relative; border:1px solid var(--border); border-radius:14px; overflow:hidden;
+    background:
+      radial-gradient(80% 120% at 50% 0%, #1a1636 0%, #0b0b1a 55%, #060610 100%);
+    box-shadow:0 20px 60px rgba(0,0,0,.6), inset 0 0 80px rgba(80,60,160,.10)}
+  /* faint brick-ish texture behind the sign */
+  .stage::before{content:""; position:absolute; inset:0; opacity:.5; pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 22px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.015) 0 1px, transparent 1px 46px)}
+  canvas{display:block; width:100%; height:auto; image-rendering:pixelated; position:relative; z-index:1}
+  .controls{display:flex; gap:10px; align-items:center; padding:12px 16px; flex-wrap:wrap;
+    border-top:1px solid var(--border); background:rgba(8,8,18,.7); position:relative; z-index:2}
+  .controls button{background:none; border:1px solid var(--border); color:var(--ink);
+    border-radius:6px; font:inherit; cursor:pointer; padding:4px 14px}
+  .controls button:hover{border-color:#8c78ff}
+  .controls .lbl{color:var(--faint); font-size:11px}
+  .controls .val{color:#a99bff}
+  input[type=range]{accent-color:#8c78ff}
+  .cap{color:var(--muted); font-size:12px; margin-top:14px; max-width:92ch}
+  .cap b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>gitagotchi · neon sign <span style="color:#a99bff">(animated night-neon)</span></h1>
+  <p class="note">The night-neon colorway brought to life like a real neon sign: the tubes
+  <b>buzz on</b> letter by letter, settle into a slow <b>breathing glow</b>, and every so often a
+  tube <b>flickers</b> the way a tired sign does. White-hot cores, blue→purple halo, and a soft
+  reflection on the floor.</p>
+
+  <div class="stage">
+    <canvas id="neon"></canvas>
+    <div class="controls">
+      <button id="replay">⟳ power on</button>
+      <button id="flick">⚡ flicker a tube</button>
+      <span class="lbl">glow</span>
+      <input id="glow" type="range" min="0" max="100" value="60">
+      <span class="lbl">buzz</span>
+      <input id="buzz" type="range" min="0" max="100" value="40">
+      <span class="lbl" style="margin-left:auto">state <span class="val" id="state">powering on…</span></span>
+    </div>
+  </div>
+
+  <p class="cap"><b>How it's animated:</b> same 7-tall pixel typeface as the wordmark, but each
+  <i>letter</i> tracks its own brightness. On power-on they ignite in sequence with a couple of
+  false-start buzzes; then a global <b>sine breathing</b> drives the halo blur, and a Poisson-ish
+  random picks a letter now and then for a 60–160 ms flicker. Each lit pixel is drawn in three
+  passes — a wide blurred <span style="color:#8c78ff">halo</span>, a tighter
+  <span style="color:#79c0f2">tube</span>, and a near-white <b>core</b> — which is what sells
+  "neon" rather than "colored text". All procedural, so it re-skins to any two-color glow.</p>
+</div>
+
+<script>
+/* ── pixel font (7 tall) — same as the wordmark ── */
+const FONT = {
+ G:["01111100","11000110","11000000","11001110","11000110","11000110","01111100"],
+ I:["1111100","0011000","0011000","0011000","0011000","0011000","1111100"],
+ T:["1111111","0011100","0011100","0011100","0011100","0011100","0011100"],
+ A:["0111110","1100011","1100011","1111111","1100011","1100011","1100011"],
+ O:["0111110","1100011","1100011","1100011","1100011","1100011","0111110"],
+ C:["0111110","1100011","1100000","1100000","1100000","1100011","0111110"],
+ H:["1100011","1100011","1100011","1111111","1100011","1100011","1100011"],
+};
+Object.keys(FONT).forEach(k=>{const w=Math.max(...FONT[k].map(r=>r.length));
+  FONT[k]=FONT[k].map(r=>r.padEnd(w,'0'))});
+
+const WORD='GITAGOTCHI';
+const GAP=2, ROWS=7, PX=8, PAD=7, FLOOR=6;  // grid units
+/* build per-letter pixel lists with x offset */
+let cursor=0;
+const LETTERS=[...WORD].map((ch,i)=>{
+  const g=FONT[ch], w=g[0].length, x0=cursor;
+  const pts=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<w;c++) if(g[r][c]==='1') pts.push([x0+c, r]);
+  cursor+=w+GAP;
+  return {ch, x0, w, pts, lvl:0, onAt:0.35+i*0.16, buzz:0};
+});
+const COLS=cursor-GAP;
+const GW=(COLS+PAD*2), GH=(ROWS+PAD*2+FLOOR);
+
+const canvas=document.getElementById('neon');
+const dpr=2;
+canvas.width=GW*PX*dpr; canvas.height=GH*PX*dpr;
+canvas.style.maxWidth=GW*PX+'px';
+const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
+const OX=PAD*PX, OY=PAD*PX;
+
+/* blue -> purple by column */
+function tubeColor(x){
+  const t=x/COLS;
+  const a=[0x79,0xc0,0xf2], b=[0xbc,0x8c,0xf2];
+  const c=a.map((v,i)=>Math.round(v+(b[i]-v)*t));
+  return c;
+}
+const rgb=(c,al)=>`rgba(${c[0]},${c[1]},${c[2]},${al==null?1:al})`;
+
+let t0=performance.now(), rng=12345;
+function rand(){ rng=(rng*1103515245+12345)&0x7fffffff; return rng/0x7fffffff; }
+let glowMul=0.6, buzzMul=0.4, powering=true;
+document.getElementById('glow').oninput=e=>glowMul=e.target.value/100;
+document.getElementById('buzz').oninput=e=>buzzMul=e.target.value/100;
+document.getElementById('replay').onclick=()=>{t0=performance.now(); powering=true;
+  LETTERS.forEach((L,i)=>{L.lvl=0; L.onAt=0.35+i*0.16; L.buzz=0});
+  document.getElementById('state').textContent='powering on…';};
+document.getElementById('flick').onclick=()=>{ const L=LETTERS[Math.floor(rand()*LETTERS.length)];
+  L.buzz=0.5; };
+
+function frame(now){
+  const t=(now-t0)/1000;
+  ctx.clearRect(0,0,GW*PX,GH*PX);
+
+  // breathing glow 0.8..1.15
+  const breathe = 0.95 + Math.sin(t*1.6)*0.18;
+  // update letters
+  let allOn=true;
+  LETTERS.forEach((L,i)=>{
+    if(powering){
+      if(t < L.onAt){ // pre-ignition buzz: mostly dark, rare flashes
+        L.lvl = (rand()<0.12)? 0.5+rand()*0.3 : 0.04;
+        allOn=false;
+      } else if(t < L.onAt+0.14){ L.lvl = 1.15; } // ignition flash
+      else { L.lvl = 1.0; }
+    } else {
+      L.lvl = 1.0;
+    }
+    // random steady flicker
+    if(!powering && L.buzz<=0 && rand() < 0.0016*buzzMul*60){ L.buzz = 0.4+rand()*0.5; }
+    if(L.buzz>0){
+      L.buzz -= 0.06;
+      L.lvl *= (rand()<0.5? 0.25 : 0.85);
+    }
+  });
+  if(powering && allOn && t>LETTERS[LETTERS.length-1].onAt+0.3){
+    powering=false; document.getElementById('state').textContent='humming';
+  }
+
+  const rect=(x,y,col,blur,al)=>{
+    ctx.shadowColor=col; ctx.shadowBlur=blur;
+    ctx.fillStyle=col; ctx.globalAlpha=al;
+    ctx.fillRect(OX+x*PX, OY+y*PX, PX, PX);
+  };
+
+  // reflection: draw a flipped, faded copy on the floor
+  function drawSet(reflect){
+    LETTERS.forEach(L=>{
+      const col=tubeColor(L.x0+L.w/2);
+      L.pts.forEach(([x,y])=>{
+        let dy=y;
+        if(reflect){ dy = (ROWS-1-y) + ROWS + 1; }
+        const lit=Math.max(0.04, L.lvl);
+        const a=(reflect?0.14:1)*Math.min(1,lit);
+        // halo
+        rect(x,dy,rgb(col), 22*glowMul*breathe*(reflect?0.5:1), 0.16*a);
+        // tube
+        rect(x,dy,rgb(col), 9*glowMul*breathe, 0.55*a);
+        // hot core
+        const core = lit>0.5 ? `rgba(240,244,255,${0.9*a})` : rgb(col,0.5*a);
+        ctx.shadowBlur=3*glowMul; ctx.shadowColor=rgb(col);
+        ctx.fillStyle=core; ctx.globalAlpha=1;
+        ctx.fillRect(OX+x*PX+PX*0.18, OY+dy*PX+PX*0.18, PX*0.64, PX*0.64);
+      });
+    });
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  }
+  drawSet(true);   // reflection first (behind)
+  drawSet(false);  // main sign
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
