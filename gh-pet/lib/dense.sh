@@ -1265,9 +1265,8 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   dh_put $(( login_w + 5 + name_w + lvl_w )) "${G_HEART} happy"
   dh_put $(( login_w + 5 + name_w + lvl_w + 13 )) "state"
   frow=$((frow + 1))
-  # rows breathe when the panel can still show everyone double-spaced
+  # friend rows are single-spaced — no blank line between entries
   local fpitch=1
-  (( ${#FR_SORTED[@]} > 0 && ff_top + ff_h - 1 - frow >= 2 * ${#FR_SORTED[@]} - 1 )) && fpitch=2
   if (( ${#FR_SORTED[@]} == 0 )); then
     scr_put "$frow" "$fx" $((pw - 5)) "${MU}$(trunc "Follow someone on GitHub and their pet appears here." $((pw - 5)))${RS}"
   fi

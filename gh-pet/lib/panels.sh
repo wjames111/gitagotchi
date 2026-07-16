@@ -963,12 +963,7 @@ draw_friends_x() {
         if [[ $f5 == "-" ]]; then need=$((need + 2)); naw=$((naw + 1)); fxh+=(2); else need=$((need + 1)); fxh+=(1); fi
       else need=$((need + 1)); fxh+=(1); fi
     done
-    local fgap=0
-    (( ph - 3 >= need + naw )) && fgap=1   # breathing between blocks
-    if (( fgap )); then
-      local j2
-      for j2 in "${!fxh[@]}"; do (( fxh[j2] == 2 )) && fxh[j2]=3; done
-    fi
+    local fgap=0   # sprite blocks stack directly, no breathing row between
   fi
   local fbnw=12 fbvw=7
   if (( ! srows )); then                       # fallback columns, budgeted
@@ -995,9 +990,8 @@ draw_friends_x() {
   hput "$fhx" "${G_HEART} happy ▾" "$(fgt "$RGB_BLUE")"
   (( fstx + 5 <= fiw )) && hput "$fstx" "state" "$FA"
   local frow=3 i
-  # single-line fallback keeps the breathing rows
+  # single-line fallback rows are single-spaced — no blank line between
   local fpitch=1
-  (( ! srows && ${#FR_SORTED[@]} > 0 && ph - 4 >= 2 * ${#FR_SORTED[@]} - 1 )) && fpitch=2
   if (( ${#FR_SORTED[@]} == 0 )); then
     scr_put 4 "$fx" $((fiw - 1)) "${MU}$(trunc "Follow someone on GitHub and their pet appears here." $((fiw - 1)))${RS}"
     scr_put 5 "$fx" $((fiw - 1)) "${MU}$(trunc "A friend's pet is computed from their public account." $((fiw - 1)))${RS}"
