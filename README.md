@@ -27,7 +27,17 @@ language — so your pet is *yours*, deterministically, forever.
 brew install wjames111/gitagotchi/gitagotchi     # macOS / Linux
 ```
 
-Debian/Ubuntu: grab the `.deb` from the [latest release](https://github.com/wjames111/gitagotchi/releases/latest)
+Debian/Ubuntu — add the apt repo once, then install (and upgrade) by name:
+
+```sh
+sudo install -d /etc/apt/keyrings
+curl -fsSL https://wjames111.github.io/gitagotchi/KEY.gpg | sudo tee /etc/apt/keyrings/gitagotchi.asc >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/gitagotchi.asc] https://wjames111.github.io/gitagotchi stable main" \
+  | sudo tee /etc/apt/sources.list.d/gitagotchi.list >/dev/null
+sudo apt update && sudo apt install gitagotchi
+```
+
+Or grab the `.deb` from the [latest release](https://github.com/wjames111/gitagotchi/releases/latest)
 and `sudo apt install ./gitagotchi_*_all.deb`. From source: clone and run `gh-pet/gh-pet`
 (needs `bash ≥ 4`, `jq`, `curl`).
 

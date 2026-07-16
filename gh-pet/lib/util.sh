@@ -2,7 +2,7 @@
 # glyph tiers, ANSI-256 color math, linguist colors, seed derivation, name generator.
 # Everything here is a pure function of its inputs (plan.md §1).
 
-VERSION="1.0.6"
+VERSION="1.0.7"
 
 die() { printf 'gh-pet: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }

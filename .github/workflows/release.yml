@@ -54,3 +54,51 @@ jobs:
         env:
           GH_TOKEN: ${{ env.TAP_TOKEN }}
         run: packaging/bump-formula.sh "${{ steps.v.outputs.version }}"
+
+  # Publish a signed apt repository to GitHub Pages so users can install by name
+  # (`apt install gitagotchi`). Gathers every released .deb into the pool, so the
+  # repo carries full version history and `apt install gitagotchi=1.2.3` works.
+  # Requires: Pages source set to "GitHub Actions", and an APT_GPG_PRIVATE_KEY
+  # secret (armored signing key; APT_GPG_PASSPHRASE too if it has one). With the
+  # secret unset the job no-ops so the .deb + release still ship.
+  apt-repo:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+      APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: gather every released .deb
+        if: ${{ env.APT_GPG_PRIVATE_KEY != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p debs
+          for tag in $(gh release list --limit 200 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --dir debs --pattern '*.deb' || true
+          done
+          ls -1 debs/*.deb
+
+      - name: build the signed apt repo
+        if: ${{ env.APT_GPG_PRIVATE_KEY != '' }}
+        run: packaging/build-apt-repo.sh public debs/*.deb
+
+      - name: upload the Pages artifact
+        if: ${{ env.APT_GPG_PRIVATE_KEY != '' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: deploy to GitHub Pages
+        if: ${{ env.APT_GPG_PRIVATE_KEY != '' }}
+        id: deploy
+        uses: actions/deploy-pages@v4
