@@ -1225,7 +1225,17 @@ draw_friends_x() {
         local pframe="idle_$(( (TICK / 3) % 2 + 1 ))"
         [[ $frz == 1 ]] && pframe="hibernate_$(( (TICK / 6) % 2 + 1 ))"
         pet_compose PV "$pframe" 0 0
-        ground=$(( 2 + PET_H )); (( ground > ph - 12 )) && ground=$(( ph - 12 ))
+        # The ground must NOT hang off the frame's own height. idle_1 and idle_2
+        # trim to different heights on 19 of the 50 species, so `2 + PET_H` moved
+        # the rule — and the nameplate, chip and every stat row measured down from
+        # it — a row up and down every few ticks. Pin it to the species' full grid
+        # instead (stable across frames) and stand the pet on it, feet planted,
+        # exactly as the stage does: a shorter frame leaves headroom rather than
+        # dragging the whole pane with it.
+        local stable_h=$PET_H
+        if [[ -n $PIX_MODE ]]; then pix_pet_rows "${PV[SPECIES]:-}"; stable_h=$PET_ROWS; fi
+        (( stable_h < PET_H )) && stable_h=$PET_H
+        ground=$(( 2 + stable_h )); (( ground > ph - 12 )) && ground=$(( ph - 12 ))
         local ptop=$(( ground - PET_H )) pi skip=0
         if (( ptop < 1 )); then skip=$(( 1 - ptop )); ptop=1; fi
         local petx=$(( px0 + (piw - PET_W) / 2 )); (( petx < px0 )) && petx=$px0
