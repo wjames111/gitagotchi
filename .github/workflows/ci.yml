@@ -23,3 +23,23 @@ jobs:
         run: brew install bash jq
       - name: run the offline suite
         run: gh-pet/tests/run.sh
+
+  # prove the apt path: build the .deb, install it for real, and drive the
+  # INSTALLED binary — this is what catches symlink/lib-resolution breakage
+  # (the kind that slipped through until `brew install` was run by hand).
+  deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the .deb
+        run: packaging/build-deb.sh 0.0.0-ci dist
+      - name: install it (resolves jq/curl deps)
+        run: sudo apt-get update -qq && sudo apt-get install -y ./dist/*.deb
+      - name: drive the installed gh-pet against fixtures
+        run: |
+          gh-pet/tests/make_fixtures.sh gh-pet/tests/fixtures >/dev/null
+          command -v gh-pet
+          gh-pet --version
+          out=$(gh-pet --fixtures gh-pet/tests/fixtures --snapshot --cozy)
+          grep -q happiness <<<"$out" || { echo "installed binary did not render"; exit 1; }
+          echo "installed .deb renders a pet ✓"

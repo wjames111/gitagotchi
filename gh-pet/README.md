@@ -19,19 +19,40 @@ The pet's persistent state is a **pure function**: `pet_state = f(github_data, w
 Nothing is stored, nothing is sent anywhere — GitHub *is* the database. Delete the
 cache and the same pet hatches again, anywhere.
 
-## Install & run
+## Install
 
-Requires `bash ≥ 4`, `curl`, `jq` (macOS: `brew install bash jq`).
+**Homebrew** (macOS / Linux):
 
 ```sh
-./gh-pet                    # your pet (auth via gh CLI, $GITHUB_TOKEN, or public-only)
-./gh-pet octocat            # anyone's pet from public data
-./gh-pet compare octocat    # side-by-side — friendly rivalry, not a leaderboard
-./gh-pet badge > pet.svg    # the pet as SVG, for embedding in a README
-./gh-pet --snapshot         # one plain-text frame to stdout (README/CI embedding)
-./gh-pet --ascii            # glyph tier A, pure ASCII
-./gh-pet --no-scrape        # skip the GitHub-achievements scrape
-./gh-pet --fixtures tests/fixtures   # fully offline, from recorded API data
+brew install wjames111/gitagotchi/gitagotchi
+```
+
+**Debian / Ubuntu** — grab the `.deb` from the [latest release](https://github.com/wjames111/gitagotchi/releases/latest):
+
+```sh
+sudo apt install ./gitagotchi_*_all.deb
+```
+
+**From source** — requires `bash ≥ 4`, `curl`, `jq` (macOS: `brew install bash jq`):
+
+```sh
+git clone https://github.com/wjames111/gitagotchi && cd gitagotchi/gh-pet
+./gh-pet
+```
+
+Both packages install the CLI as `gh-pet` and pull in `jq`/`curl`.
+
+## Run
+
+```sh
+gh-pet                      # your pet (auth via gh CLI, $GITHUB_TOKEN, or public-only)
+gh-pet octocat              # anyone's pet from public data
+gh-pet compare octocat      # side-by-side — friendly rivalry, not a leaderboard
+gh-pet badge > pet.svg      # the pet as SVG, for embedding in a README
+gh-pet --snapshot           # one plain-text frame to stdout (README/CI embedding)
+gh-pet --ascii              # glyph tier A, pure ASCII
+gh-pet --no-scrape          # skip the GitHub-achievements scrape
+gh-pet --fixtures gh-pet/tests/fixtures   # fully offline, from recorded API data (source checkout)
 ```
 
 Keys: `f` friends · `s` stat detail (every low bar links to the page that fixes it) ·
