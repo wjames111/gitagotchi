@@ -76,6 +76,27 @@ _hap=$(sed -n "s/^HAPPINESS='\([0-9]*\)'.*/\1/p" <<<"$ASP")
 _cap=$(sed -n "s/^CAPPED_BY='\(.*\)'\$/\1/p" <<<"$ASP")
 if [[ -n $_hap ]] && (( _hap > 60 )) && [[ -z $_cap ]]; then ok "aspirational stats never hard-cap (happiness $_hap > 60, uncapped)"; else fail "an aspirational stat capped a healthy pet (happiness=${_hap:-none} capped_by='$_cap')"; fi
 
+echo "· you are never your own guest: GitHub logins are case-insensitive, so"
+echo "  'gh-pet SELF' must still recognize self/app as its own — otherwise the"
+echo "  owner of every repo you touch reads as a stranger and you turn up on your"
+echo "  own stage as a visitor (and in your own outbound social score)"
+_vev=$(jq -n --argjson n "$_now" '[
+  {type:"IssueCommentEvent",created_at:(($n-600)|todate),repo:{name:"self/app"}},
+  {type:"IssueCommentEvent",created_at:(($n-600)|todate),repo:{name:"mona/hello"},
+   payload:{issue:{user:{login:"mona"}}}}]')
+VIS=$(jq -n -r --arg now "$_now" --arg login SELF \
+  --argjson user '[{"id":3151702,"login":"self","created_at":"2019-03-14T09:00:00Z"}]' \
+  --argjson events "[$_vev]" \
+  --argjson repos null --argjson merged null --argjson approved null --argjson changesreq null \
+  --argjson reviewedby null --argjson starred null --argjson stale null --argjson alerts null \
+  --argjson calendar null --argjson notifications null --argjson medals null \
+  --argjson orgs null --argjson following null -f "$ROOT/lib/stats.jq" 2>&1)
+_vis=$(sed -n "s/^VISITORS='\(.*\)'\$/\1/p" <<<"$VIS")
+if [[ " $_vis " != *" self "* && " $_vis " != *" SELF "* ]]; then ok "self never appears in its own visitor list (VISITORS='$_vis')"; else fail "the pet is visiting itself (VISITORS='$_vis')"; fi
+if [[ " $_vis " == *" mona "* ]]; then ok "a real last-hour interaction still drops by (mona)"; else fail "guest list lost a real visitor (VISITORS='$_vis')"; fi
+_out=$(sed -n "s/^OUTBOUND7='\([0-9]*\)'\$/\1/p" <<<"$VIS")
+if [[ $_out == 1 ]]; then ok "outbound social counts others' repos only, whatever the login's casing"; else fail "own-repo comments leaked into outbound social (OUTBOUND7=${_out:-none}, want 1)"; fi
+
 echo "· unauthenticated / public-only path (plan.md §9.2): the pure function still"
 echo "  derives when health is unknown and the contribution calendar is absent"
 UARGS=(-r --arg now "$(date +%s)" --arg login octotest)

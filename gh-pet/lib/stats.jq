@@ -38,6 +38,12 @@
   ([ $EV[] | select((.created_at | fromdateiso8601) <= $NOW) ]) as $EV
 | ([ $ST[] | select((.starred_at // null) == null or ((.starred_at | fromdateiso8601) <= $NOW)) ]) as $ST
 
+# who we are, for comparison against API payloads. GitHub logins are case-
+# insensitive, but $login arrives from the CLI in whatever casing was typed while
+# payloads carry the canonical spelling — compare downcased, or `gh-pet willjames`
+# fails to recognize its own "WillJames/repo" events as its own.
+| (($U.login // $login) | ascii_downcase) as $me
+
 # ── account & identity facts ─────────────────────────────────────────────────
 | ($U.created_at // "2020-01-01T00:00:00Z") as $created
 | (dago($created)) as $acct_days
@@ -157,16 +163,19 @@
     | select(.type == "IssueCommentEvent" or .type == "PullRequestReviewEvent"
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | select(dago(.created_at) < 7)
-    | select((.repo.name // "") | startswith($login + "/") | not) ] | length) as $outbound7
+    | select((.repo.name // "" | ascii_downcase) | startswith($me + "/") | not) ] | length) as $outbound7
 | ((7 * ($outbound7 | sqrt) + ([($FW | length), 20] | min)) | clamp(0; 100) | round) as $social
 # visitors: whoever you've interacted with in the LAST HOUR — their pets
-# drop by on the stage (owners of repos you commented/reviewed on)
+# drop by on the stage (owners of repos you commented/reviewed on).
+# You are never your own guest: the repo filter is only a proxy for that, so the
+# owner is checked against $me directly rather than trusting the proxy to hold.
 | ([ $EV[]
     | select(.type == "IssueCommentEvent" or .type == "PullRequestReviewEvent"
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | select(dago(.created_at) < (1 / 24))
-    | select((.repo.name // "") | startswith($login + "/") | not)
-    | ((.repo.name // "") | split("/")[0]) | select(. != "") ]
+    | select((.repo.name // "" | ascii_downcase) | startswith($me + "/") | not)
+    | ((.repo.name // "") | split("/")[0])
+    | select(. != "" and (ascii_downcase != $me)) ]
    | unique | .[0:3]) as $visitors
 # bond ledger: who you actually talk to — for every comment/review event,
 # the counterpart is the author of the issue/PR (person-level, so org-repo
@@ -178,7 +187,7 @@
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | (.payload.issue.user.login // .payload.pull_request.user.login
        // ((.repo.name // "") | split("/")[0]))
-    | select(. != "" and . != $login) ]
+    | select(. != "" and (ascii_downcase != $me)) ]
    | group_by(.) | sort_by(-length) | .[0:30]
    | map("\(.[0])|\(length)") | join(";")) as $comms
 
