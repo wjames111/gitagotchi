@@ -1759,8 +1759,14 @@ pix_render_mini() { # species_id linguist_hex → PIXM[0..1] (visible width 6)
 # Majority downsample; eyes/accents win their block so the face survives.
 declare -A PIXHALFCACHE PIXHALFCACHE_H
 declare -a PIXH
-pix_render_half() { # species_id linguist_hex [frame] [beard] → PIXH[] (visible width 12)
-  local id=$1 hex=$2 frame=${3:-idle_1} beard=${4:-0}
+# The cameo width is a PARAMETER, not a constant. It was fixed at 12, which was
+# a 2:1 squeeze of the old 24-wide art; against 48-wide art the same 12 columns
+# is 4:1, and species stops reading — a raccoon and an otter in one language's
+# colour become the same yellow blob, leaving the beard as the only thing
+# telling two pets apart. The stage sizes it to the company instead (dense.sh).
+pix_render_half() { # species_id linguist_hex [frame] [beard] [cols=12] → PIXH[]
+  local id=$1 hex=$2 frame=${3:-idle_1} beard=${4:-0} tw=${5:-12}
+  (( tw < 4 )) && tw=4
   case $frame in
     sick) frame=sick_1 ;; celebrate) frame=celebrate_1 ;;
     belly|stretch|young) frame=idle_1 ;;
@@ -1771,7 +1777,7 @@ pix_render_half() { # species_id linguist_hex [frame] [beard] → PIXH[] (visibl
   # a guest turning up must not shave the host (the rest of the expression is
   # detail the 12-px downsample would smear anyway). Its shade is per-pet, so
   # PIX_BEARD_RGB rides in the key too, or a visitor would wear the host's.
-  local ck="$id|$hex|$frame|$beard|${PIX_BEARD_RGB:-}|$PIX_MODE"
+  local ck="$id|$hex|$frame|$beard|${PIX_BEARD_RGB:-}|$PIX_MODE|$tw"
   if [[ -n ${PIXHALFCACHE[$ck]:-} ]]; then
     local IFS=$'\n'; PIXH=(${PIXHALFCACHE[$ck]}); unset IFS
     return 0
@@ -1791,15 +1797,16 @@ pix_render_half() { # species_id linguist_hex [frame] [beard] → PIXH[] (visibl
   local h=$(( r1 - r0 + 1 ))
   (( h < 2 )) && { r0=0; h=${#g[@]}; (( h < 1 )) && h=18; r1=$(( h - 1 )); }
   local th=$(( (h + 1) / 2 )); (( th % 2 )) && th=$(( th + 1 ))
-  # proportional on x too: w/12 source px per target px (2 at 24 wide, 4 at 48)
+  # proportional on x: w/tw source px per target px, so a wider cameo keeps
+  # more of the grid instead of majority-voting it away
   local w=${#g[0]}; (( w < 1 )) && w=24
   local ty tx sy y0 y1 x0 x1 k ch row seg
   for ((ty=0; ty<th; ty++)); do
     local mrow=""
     y0=$(( r0 + ty * h / th )); y1=$(( r0 + (ty + 1) * h / th ))
     (( y1 <= y0 )) && y1=$(( y0 + 1 ))
-    for ((tx=0; tx<12; tx++)); do
-      x0=$(( tx * w / 12 )); x1=$(( (tx + 1) * w / 12 ))
+    for ((tx=0; tx<tw; tx++)); do
+      x0=$(( tx * w / tw )); x1=$(( (tx + 1) * w / tw ))
       (( x1 <= x0 )) && x1=$(( x0 + 1 ))
       local -A cnt=()
       for ((sy=y0; sy<y1; sy++)); do
@@ -1827,7 +1834,7 @@ pix_render_half() { # species_id linguist_hex [frame] [beard] → PIXH[] (visibl
   local y x t b tc bc line
   for ((y=0; y<th; y+=2)); do
     line=""
-    for ((x=0; x<12; x++)); do
+    for ((x=0; x<tw; x++)); do
       t=${m[y]:x:1}; b=${m[y+1]:x:1}
       [[ -z $t ]] && t="."; [[ -z $b ]] && b="."
       tc=""; bc=""
