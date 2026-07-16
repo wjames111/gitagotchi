@@ -37,7 +37,10 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y ./dist/*.deb
       - name: drive the installed gh-pet against fixtures
         run: |
-          gh-pet/tests/make_fixtures.sh gh-pet/tests/fixtures >/dev/null
+          # make_fixtures.sh cd's into its own dir, so let it use its default
+          # location (gh-pet/tests/fixtures) rather than passing a path it
+          # would then re-root under tests/
+          gh-pet/tests/make_fixtures.sh >/dev/null
           command -v gh-pet
           gh-pet --version
           out=$(gh-pet --fixtures gh-pet/tests/fixtures --snapshot --cozy)
