@@ -187,14 +187,20 @@ NAME_VOWS=(a e i o u)
 NAME_VOWF=(a e i o u a e i o u ai ei oa ua io)   # diphthongs stay the spice
 NAME_CODA=("" "" "" "" "" "" n r s l m k t x sh nd ph)
 gen_name() {
-  local syl=3 name="" i
-  (( SEED[1] % 8 == 0 )) && syl=4
-  for ((i=0; i<syl; i++)); do
-    name+="${NAME_ONS[SEED[2*i+2] % 30]}"
-    if (( i == 0 )); then name+="${NAME_VOWS[SEED[2*i+3] % 5]}"
-    else name+="${NAME_VOWF[SEED[2*i+3] % 15]}"; fi
+  # names stay generally 8 letters or fewer: always two syllables, a third only
+  # when it still fits, and a coda for spice on some seeds when there's room.
+  # Built to fit rather than truncated, so no jarring cut-offs — and not a hard
+  # cap, just a bias away from the old 11–17 letter mouthfuls.
+  local name="" i
+  for ((i=0; i<3; i++)); do
+    local ons=${NAME_ONS[SEED[2*i+2] % 30]} vow
+    if (( i == 0 )); then vow=${NAME_VOWS[SEED[2*i+3] % 5]}
+    else vow=${NAME_VOWF[SEED[2*i+3] % 15]}; fi
+    (( i >= 2 && ${#name} + ${#ons} + ${#vow} > 8 )) && break
+    name+="$ons$vow"
   done
-  name+="${NAME_CODA[SEED[15] % 17]}"
+  local coda=${NAME_CODA[SEED[15] % 17]}
+  (( ${#name} + ${#coda} <= 8 && SEED[16] % 2 == 0 )) && name+="$coda"
   printf '%s' "$(tr '[:lower:]' '[:upper:]' <<<"${name:0:1}")${name:1}"
 }
 
