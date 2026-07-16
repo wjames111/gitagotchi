@@ -388,7 +388,7 @@ insight_text() { # assoc_name self → INSIGHT ("" if quiet screen)
   (( low >= 50 )) && return   # a happy screen is a quiet screen
   local why=""
   case ${names[lowi]} in
-    hunger) why="no merged PRs are fresh — each merge feeds ${P[NAME]} for ~3 days" ;;
+    hunger) why="no merged PRs are fresh — each merge feeds ${P[NAME]} for ~4 days" ;;
     energy) why="$(( ${P[RATIO_X100]:-100} / 100 ))× your usual pace, ${P[REST_GAPS]} rest gap(s) ≥ 6h in the last 24h" ;;
     mood) why="${P[CHANGESREQ7]} changes-requested vs ${P[APPROVED7]} approvals this week" ;;
     fitness) why="active ${P[ACTIVE21]} of the last 21 days — rhythm beats volume" ;;

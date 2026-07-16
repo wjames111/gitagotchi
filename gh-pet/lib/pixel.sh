@@ -168,6 +168,86 @@ pix_egg_register() {
   PIX_HASFRAME[egg/crack_2]=1
   pix_books_register
   pix_ball_register
+  pix_scene_register
+}
+
+# ── scene props (day/night + seasons, plan.md §11) ──────────────────────────
+# Ambient pixel weather: a crescent moon and sparkle stars for the night sky;
+# snowflakes, flowers and leaves for the seasons. Fixed palettes with ref ==
+# their own hex, so pix_palette passes every color through exactly — like the
+# books and the ball, never hue-shifted by the pet's language. Letters B/X/Y/Z
+# stay off-limits (pix_palette overwrites them: beard + spear).
+pix_scene_register() {
+  PIXPAL[moon]="M=#f2ead0 m=#c8bd9c"
+  PIXREF[moon]="#f2ead0"
+  PIXF[moon/idle_1]='..MMm..
+.MMMm..
+MMMm...
+MMm....
+MMm....
+MMMm...
+.MMMm..
+..MMm..'
+  PIX_HASFRAME[moon/idle_1]=1
+  PIXPAL[spark]="W=#f4f7ff w=#c3cde8 s=#7d8bb4"
+  PIXREF[spark]="#f4f7ff"
+  PIXF[spark/idle_1]='..s..
+..w..
+swWws
+..w..
+..s..'
+  PIX_HASFRAME[spark/idle_1]=1
+  PIXPAL[flake]="I=#bcd7f2 W=#ffffff"
+  PIXREF[flake]="#bcd7f2"
+  PIXF[flake/idle_1]='I.I.I
+.III.
+IIWII
+.III.
+I.I.I'
+  PIX_HASFRAME[flake/idle_1]=1
+  # one blossom shape, three petal colors — gold, white, pink (each frame
+  # picks its petal letter; stem shared)
+  PIXPAL[flower]="N=#f792c8 E=#e8c94f U=#eef0f5 C=#f7d54a G=#4d8a4f g=#365f38"
+  PIXREF[flower]="#f792c8"
+  PIXF[flower/pink]='.NNN.
+NNCNN
+.NNN.
+..G..
+.gG..
+..G..'
+  PIX_HASFRAME[flower/pink]=1
+  PIXF[flower/gold]='.EEE.
+EECEE
+.EEE.
+..G..
+.gG..
+..G..'
+  PIX_HASFRAME[flower/gold]=1
+  PIXF[flower/white]='.UUU.
+UUCUU
+.UUU.
+..G..
+.gG..
+..G..'
+  PIX_HASFRAME[flower/white]=1
+  # one leaf silhouette, three autumn shades — orange, rust, gold
+  PIXPAL[leaf]="A=#e08a3e a=#a85f28 R=#c25b30 r=#8a3f20 D=#d9a83c d=#9c7526"
+  PIXREF[leaf]="#e08a3e"
+  PIXF[leaf/a]='..AA
+.AAa
+AAa.
+aa..'
+  PIX_HASFRAME[leaf/a]=1
+  PIXF[leaf/b]='..RR
+.RRr
+RRr.
+rr..'
+  PIX_HASFRAME[leaf/b]=1
+  PIXF[leaf/c]='..DD
+.DDd
+DDd.
+dd..'
+  PIX_HASFRAME[leaf/c]=1
 }
 
 # ── the fetch ball (PR-merged reward) ────────────────────────────────────────

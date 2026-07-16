@@ -72,10 +72,12 @@
    - ((($ratio - 1.75) * 35) | clamp(0; 70))
   | clamp(0; 100) | round) as $energy
 
-# 1 — hunger: merged PRs 7d, each 14·0.5^(days_ago/1.5) (plan.md §3)
+# 1 — hunger: merged PRs 7d, each 14·0.5^(days_ago/2) (plan.md §3) — the
+# 2-day half-life is deliberate weekend forgiveness: energy celebrates rest
+# gaps, so hunger shouldn't punish the same two quiet days
 | ($MG.items // []) as $mgi
 | ([ $mgi[] | (.pull_request.merged_at // .closed_at) | select(. != null) | dago(.) ]) as $mdays
-| (([ $mdays[] | 14 * pow(0.5; . / 1.5) ] | add // 0) | clamp(0; 100) | round) as $hunger
+| (([ $mdays[] | 14 * pow(0.5; . / 2) ] | add // 0) | clamp(0; 100) | round) as $hunger
 | ($mdays | length) as $merges7
 | (if ($mgi | length) > 0
    then ($mgi | sort_by(.pull_request.merged_at // .closed_at) | last) else null end) as $newest
@@ -286,7 +288,7 @@
   ( [ $mgi[0:8][] | (dago(.pull_request.merged_at // .closed_at)) as $md
       | {t: ep(.pull_request.merged_at // .closed_at), tag: "merge",
          tx: ("PR #\(.number) merged in \((.repository_url // "?") | split("/") | last)"),
-         fx: ("+\(14 * pow(0.5; $md / 1.5) | round) hunger"),
+         fx: ("+\(14 * pow(0.5; $md / 2) | round) hunger"),
          u: (.html_url // ""), ttl: (.title // "")} ]
   + [ $nts[] | select(.reason == "review_requested")
       | {t: ep(.updated_at), tag: "review",

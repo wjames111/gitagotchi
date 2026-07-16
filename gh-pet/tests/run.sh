@@ -92,23 +92,26 @@ echo "· day/night + seasons (plan.md §11): the wall clock dresses the stage"
 # night: 100×34 leaves two rows of open sky above a 9-row pet
 SNAPNT=$(GITAGOTCHI_PRETEND_HOUR=23 GITAGOTCHI_SNAP_COLS=100 GITAGOTCHI_SNAP_LINES=34 \
   COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPNT" "☾"         "night: the crescent moon rises"
+# the ornaments are PIXEL sprites now (pix_scene_register) — fingerprints
+# are their palette rgb values, not glyphs
+assert_contains "$SNAPNT" "242;234;208" "night: the pixel crescent rises (undimmed cream)"
+assert_contains "$SNAPNT" "195;205;232" "night: a 4-point pixel sparkle in a clear lane"
 assert_contains "$SNAPNT" "150;160;185" "night: star motes fill the open sky"
-assert_contains "$SNAPNT" "205;214;235" "night: a bright ✦ among them"
+assert_contains "$SNAPNT" "205;214;235" "night: a bright mote among them"
 assert_contains "$SNAPNT" "30;39;58"  "night: the ground dims to moonlight"
 # the moonlit palette reaches the pixel letters: spear silver 200;204;212
 # cools to 140;153;195 (moonlit = ×0.70 ×0.75 ×0.92)
 assert_contains "$SNAPNT" "140;153;195" "night: the spear cools under moonlight"
 if grep -qF "200;204;212" <<<"$SNAPNT"; then fail "night: no daylight silver after dark"; else ok "night: no daylight silver after dark"; fi
 SNAPWN=$(GITAGOTCHI_PRETEND_MONTH=1 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPWN" "❄"          "winter: snow falls on the stage"
+assert_contains "$SNAPWN" "188;215;242" "winter: pixel snow falls on the stage"
 assert_contains "$SNAPWN" "96;108;128" "winter: frost settles on the ground"
 SNAPSG=$(GITAGOTCHI_PRETEND_MONTH=4 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPSG" "❀"          "spring: flowers root on the stage floor"
+assert_contains "$SNAPSG" "247;146;200" "spring: the pink pixel blossom roots on the floor"
 SNAPAU=$(GITAGOTCHI_PRETEND_MONTH=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
-assert_contains "$SNAPAU" "224;136;62" "autumn: leaves drift in their own orange"
+assert_contains "$SNAPAU" "224;138;62" "autumn: pixel leaves drift in their own orange"
 # the default frame (pinned summer noon) stays mockup-canonical: no scenery
-if grep -q '☾\|❄\|❀' <<<"$SNAPBK2"; then fail "summer noon: the stage stays mockup-canonical"; else ok "summer noon: the stage stays mockup-canonical"; fi
+if grep -q '242;234;208\|188;215;242\|247;146;200\|224;138;62' <<<"$SNAPBK2"; then fail "summer noon: the stage stays mockup-canonical"; else ok "summer noon: the stage stays mockup-canonical"; fi
 echo "· expanded panels (gitagotchi-panels.html): s / g / f / e full views"
 SNAP7=$("$ROOT/gh-pet" --fixtures fixtures --snapshot --dense --panel vitals 2>&1)
 assert_contains "$SNAP7" "vitals · all 10"       "vitals: panel title"

@@ -134,6 +134,32 @@ screen_overlay() { # row col colored_glyph [display_width]
   SCREEN[row]=$out
 }
 
+# scene_blit top left — draw the current PIXOUT prop rows BEHIND the cast.
+# Multi-cell sprite rows are dangerous under scr_emit's x-order rule (a row
+# that starts left of a foreground segment and overlaps it would eat that
+# segment whole), so every row is checked against the obstacle ledger
+# SCN_OBST ("x0 x1 y0 y1" boxes: pet/egg, mess piles, medal shelf, books,
+# toy ball) and against the stage bounds; a colliding row is skipped —
+# the sprite reads as passing behind whatever owns those cells. Relies on
+# bash dynamic scoping for draw_dense's locals (stage_top ground pix0 pw).
+scene_blit() { # top left
+  local top=$1 left=$2 r rr ob ox0 ox1 oy0 oy1
+  (( left < pix0 || left + PIXOUT_W > pw - 2 )) && return
+  for ((r=0; r<PIXOUT_H; r++)); do
+    rr=$((top + r))
+    (( rr < stage_top || rr >= ground )) && continue
+    local hit=0
+    for ob in "${SCN_OBST[@]}"; do
+      read -r ox0 ox1 oy0 oy1 <<<"$ob"
+      if (( rr >= oy0 && rr <= oy1 && left <= ox1 && left + PIXOUT_W - 1 >= ox0 )); then
+        hit=1; break
+      fi
+    done
+    (( hit )) && continue
+    scr_put "$rr" "$left" "$PIXOUT_W" "${PIXOUT[r]}"
+  done
+}
+
 # panel_frame top left w h rgb title key — empty title → plain top border.
 # PF_TITLE_RGB (one shot) colors the title independently of the border.
 panel_frame() {
@@ -207,11 +233,14 @@ dval() { # value [frozen] → threshold-colored value; frozen = ice ❄ + value
   (( v < 20 )) && rgb=$RGB_RED
   printf '%s' "$(fgt "$rgb")${C_BOLD}$(printf '%3s' "$v")${RS}"
 }
-SPARK_CH="▁▂▃▄▅▆▇█"
+SPARK_CH="▁▂▃▄▅▆"
 dspark() { # "v1 v2 …" → DSP colored sparkline (single quiet blue, §9.3)
   # bars scale to the series' own range, like the expanded detail's history —
   # a 3-point drift reads as a slope, not identical columns; a truly flat
   # series sits mid-height. The meter next door owns the absolute level.
+  # Tops out at ▆, never █: the top quarter of the cell stays background
+  # (same breathing room as the meters) so stacked rows don't fuse into one
+  # tall waveform — the row above keeps a clear seam.
   local key=$1
   if [[ -n ${DSPARK_CACHE[$key]:-} ]]; then DSP=${DSPARK_CACHE[$key]}; return; fi
   local -a vs=($key)
@@ -222,11 +251,12 @@ dspark() { # "v1 v2 …" → DSP colored sparkline (single quiet blue, §9.3)
   done
   local span=$(( hi - lo )) out="" i
   for x in "${vs[@]}"; do
-    if (( span == 0 )); then i=3
-    else i=$(( (x - lo) * 7 / span )); fi
+    if (( span == 0 )); then i=2
+    else i=$(( (x - lo) * 5 / span )); fi
     out+=${SPARK_CH:i:1}
   done
-  DSP="$(fgt "$RGB_BLUE")${C_DIM}${out}${RS}"
+  # undimmed RGB_BLUE — the exact shade of the friends panel frame
+  DSP="$(fgt "$RGB_BLUE")${out}${RS}"
   DSPARK_CACHE[$key]=$DSP
 }
 
@@ -562,6 +592,13 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
     scr_put "$stage_top" $((pw - 22)) 19 "${FA}medals: unavailable${RS}"
   fi
 
+  # obstacle ledger for the pixel weather (scene_blit): everything the
+  # scenery must stay behind registers a box here as it draws
+  local -a SCN_OBST=()
+  local SCN_BUSY=0   # visitors hosting → the stage is crowded, weather waits
+  (( shelf_lim < pw - 2 )) && SCN_OBST+=("$shelf_lim $((pw - 2)) $stage_top $((stage_top + 2))")
+  [[ ${P[MEDALS_OK]:-0} != 1 ]] && SCN_OBST+=("$((pw - 22)) $((pw - 4)) $stage_top $stage_top")
+
   # cobwebs: 90+ days quiet — corner web + spider on a swaying thread
   if cobwebbed "$1"; then
     local -a web=("${COBWEB_TL[@]}")
@@ -610,6 +647,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       done
       GLEE_TX=$(( ex + PIXOUT_W / 2 )); GLEE_TY=$(( ground - 2 ))
       GLEE_HX=$GLEE_TX GLEE_HY=$etop
+      SCN_OBST+=("$ex $((ex + PIXOUT_W - 1)) $etop $((ground - 1))")
     else
       egg_frame "${HATCH_TILT:-0}" "$(fg "${P[COLOR256]:-180}")"
       eh=${#SPCOMP_PLAIN[@]}
@@ -622,6 +660,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       done
       GLEE_TX=$(( ex + 3 )); GLEE_TY=$(( ground - 2 ))
       GLEE_HX=$GLEE_TX GLEE_HY=$etop
+      SCN_OBST+=("$ex $((ex + 6)) $etop $((ground - 1))")
     fi
     # floaters (sparks) still rise around the egg
     local fl
@@ -676,10 +715,12 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
     (( prr >= ground )) && break
     scr_put "$prr" "$petx" "$PET_W" "${PET_LINES[i]}"
   done
+  SCN_OBST+=("$petx $((petx + PET_W - 1)) $pet_top $((ground - 1))")
   # toy ball (curiosity ≥ 60) and flies (§5.3 vignettes carry over)
   if [[ $VIG_CUR == ball && $ANIM_STATE == idle ]]; then
     local bx=$(( petx - 5 - ((TICK / 6) % 2) * 2 ))
     scr_put $((ground - 1)) "$bx" 1 "$(fgt "$RGB_BLUE")${G_BALL}${RS}"
+    SCN_OBST+=("$bx $bx $((ground - 1)) $((ground - 1))")
   fi
   # the book pile (curiosity ≥ 75): a fixed reading corner at the stage's
   # left wall, five books of different colors and sizes. bkw was settled
@@ -695,6 +736,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       for ((bi=0; bi<PIXOUT_H; bi++)); do
         scr_put $(( ground - PIXOUT_H + bi )) "$bkx" "$PIXOUT_W" "${PIXOUT[bi]}"
       done
+      SCN_OBST+=("$bkx $((bkx + PIXOUT_W - 1)) $((ground - PIXOUT_H)) $((ground - 1))")
     elif [[ -z $PIX_MODE ]]; then
       # glyph-tier stand-in: a tiny spine pile in the same corner
       local bg2="≣"; [[ $TIER == A ]] && bg2="="
@@ -727,6 +769,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   # full pixel sprites on the ground beside the host, each animated in its
   # own linguist color; when a sprite doesn't fit, the mini face stands in
   if [[ $self == 1 && -n ${P[VISITORS]:-} ]]; then
+    SCN_BUSY=1   # a crowd on stage — the weather sits this one out
     local -a vlog=(${P[VISITORS]})
     # (re)load visitor pets when the guest list or their caches change
     local vkey="${P[VISITORS]}" vl2
@@ -829,6 +872,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
     local mi3
     for ((mi3=0; mi3<mess; mi3++)); do
       local mx3=$(( pix0 + (piw - 8) * ${mfrac[mi3]} / 100 ))
+      SCN_OBST+=("$mx3 $((mx3 + 7)) $((ground - 3)) $((ground - 1))")
       if [[ -n $PIX_MODE ]]; then
         poop_sprite
         local pr3
@@ -845,68 +889,139 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   fi
 
   # ── day/night + seasons (plan.md §11, unparked): the wall clock dresses
-  # the stage. Every ornament is a single 1-cell scr_put placed AFTER the
-  # pet, props and medals — scr_emit's x-order rule makes a late 1-wide
-  # segment yield to anything already on the row, so the sky can never eat
-  # a medal chip or shove a border. A summer noon adds nothing: the default
-  # frame stays mockup-canonical.
+  # the stage in PIXEL sprites (moon/spark/flake/flower/leaf, pixel.sh
+  # pix_scene_register) drawn through scene_blit, which skips any sprite row
+  # that crosses the SCN_OBST ledger — weather passes BEHIND the cast. The
+  # single-pixel motes stay 1-cell scr_puts (half-blocks ▀/▄ on the pixel
+  # grid), safe by scr_emit's x-order rule alone. Terminals without pixel
+  # mode keep the glyph ornaments. A summer noon adds nothing: the default
+  # frame stays mockup-canonical. Visitors hosting → SCN_BUSY, weather waits.
   local sch=$(( stage_h > 1 ? stage_h : 1 ))
-  if (( SCENE_NIGHT )); then
-    # crescent top-left (cobwebs were put first and win the corner) + a
-    # starfield hashed from the column index; stars twinkle out on TICK
-    scr_put "$stage_top" $((pix0 + 2)) 1 "$(fgt "216;222;235")${G_MOON}${RS}"
+  local scnpix=0
+  [[ -n $PIX_MODE && -n ${PIXF[moon/idle_1]:-} ]] && scnpix=1
+  if (( SCENE_NIGHT && ! SCN_BUSY )); then
     # stars keep to the upper 3/5 of the stage — low ones read as fireflies
     local skyh=$(( sch * 3 / 5 )) sk sh sx sy
     (( skyh < 1 )) && skyh=1
+    if (( scnpix )); then
+      # celestials render UNDIMMED (PIX_NIGHT off for their palettes): the
+      # moon is the light source — moonlight must not dim it
+      local nsave=$PIX_NIGHT
+      PIX_NIGHT=0
+      pix_palette moon "${PIXREF[moon]}" 0
+      pix_render moon idle_1 0
+      scene_blit "$stage_top" $((pix0 + 1))
+      # two 4-point sparkles in the clear lanes: below the moon on the left
+      # wall, low on the right wall (the shelf owns the top-right, and the
+      # mote field owns the mid-right sky); they bob and twinkle
+      pix_palette spark "${PIXREF[spark]}" 0
+      pix_render spark idle_1 0
+      (( (${TICK:-0} / 8) % 5 != 4 )) && \
+        scene_blit $(( stage_top + 5 + (${TICK:-0} / 8) % 2 )) $((pix0 + 1))
+      (( (${TICK:-0} / 8) % 5 != 2 )) && \
+        scene_blit $(( stage_top + 6 + (${TICK:-0} / 16) % 2 )) $((pix0 + piw - 7))
+      PIX_NIGHT=$nsave
+    else
+      # glyph tier: the old crescent (cobwebs were put first, win the corner)
+      scr_put "$stage_top" $((pix0 + 2)) 1 "$(fgt "216;222;235")${G_MOON}${RS}"
+    fi
+    # the mote field, hashed from the column index; twinkles out on TICK.
+    # column-keyed brights (sk%3==1): however the pet occludes the field,
+    # the survivors always mix faint and bright
     for ((sk=0; sk<(piw - 8) / 7; sk++)); do
       sh=$(( (sk * 20 + 56) % 97 ))
       sx=$(( pix0 + 5 + sk * 7 + sh % 5 ))
       sy=$(( stage_top + sh % skyh ))
       (( sx >= pw - 3 )) && continue
       (( (${TICK:-0} / 4 + sk) % 6 == 0 )) && continue   # twinkle
-      local sg=$G_HORIZ sc="150;160;185"
-      # column-keyed like winter's big flake: however the pet occludes the
-      # field, the survivors always mix motes and sparks
-      (( sk % 3 == 1 )) && { sg=$G_SPARK; sc="205;214;235"; }
+      local sc="150;160;185"
+      (( sk % 3 == 1 )) && sc="205;214;235"
+      local sg
+      if (( scnpix )); then
+        sg="▀"; (( sh % 2 )) && sg="▄"   # a lone pixel on the half-block grid
+      else
+        sg=$G_HORIZ; (( sk % 3 == 1 )) && sg=$G_SPARK
+      fi
       scr_put "$sy" "$sx" 1 "$(fgt "$sc")${sg}${RS}"
     done
   fi
+  if (( ! SCN_BUSY )); then
   case $SCENE_SEASON in
     winter)
-      # snowfall: flakes sink with TICK, phase-shifted per column so they
-      # never fall in a sheet; every third is the big ❄, the rest are motes
+      if (( scnpix )); then
+        # two big pixel flakes fall down the clear side lanes, half a stage
+        # apart in phase; the mote flurry falls in half-pixel steps (▀→▄)
+        pix_palette flake "${PIXREF[flake]}" 0
+        pix_render flake idle_1 0
+        scene_blit $(( stage_top + (1 + ${TICK:-0} / 2) % sch )) $((pix0 + 2))
+        scene_blit $(( stage_top + (sch / 2 + 1 + ${TICK:-0} / 2) % sch )) $((pix0 + piw - 7))
+      fi
       local wk wh wx wy
       for ((wk=0; wk<(piw - 4) / 6; wk++)); do
         wh=$(( (wk * 40503 + 17) % 89 ))
         wx=$(( pix0 + 2 + wk * 6 + wh % 4 ))
-        wy=$(( stage_top + (wh + ${TICK:-0} / 2 + wk) % sch ))
         (( wx >= pw - 3 )) && continue
-        local wg=$G_HORIZ
-        (( wk % 3 == 0 )) && wg=$G_FROZEN   # column-keyed: flake 0 sits
-                                            # stage-left, clear of the pet
-        scr_put "$wy" "$wx" 1 "$(fgt "170;190;215")${wg}${RS}"
+        if (( scnpix )); then
+          local wp=$(( (wh + ${TICK:-0}) % (sch * 2) ))
+          wy=$(( stage_top + wp / 2 ))
+          local wg="▀"; (( wp % 2 )) && wg="▄"
+          scr_put "$wy" "$wx" 1 "$(fgt "188;215;242")${wg}${RS}"
+        else
+          wy=$(( stage_top + (wh + ${TICK:-0} / 2 + wk) % sch ))
+          local wg=$G_HORIZ
+          (( wk % 3 == 0 )) && wg=$G_FROZEN
+          scr_put "$wy" "$wx" 1 "$(fgt "170;190;215")${wg}${RS}"
+        fi
       done ;;
     spring)
-      # three flowers rooted at fixed fractions of the stage floor
-      local -a fxf=(12 46 82) fxc=("247;120;186" "210;153;34" "232;232;242")
-      local fk2 fx2
-      for fk2 in 0 1 2; do
-        fx2=$(( pix0 + (piw - 1) * ${fxf[fk2]} / 100 ))
-        scr_put $((ground - 1)) "$fx2" 1 "$(fgt "${fxc[fk2]}")${G_FLOWER}${RS}"
-      done ;;
+      if (( scnpix )); then
+        # three pixel blossoms rooted on the stage floor — gold, white,
+        # pink; pink takes the rightmost root, the one the pet occludes
+        # least (the left ones hide behind the mess pile / the pet and
+        # bloom again when the stage clears)
+        pix_palette flower "${PIXREF[flower]}" 0
+        local -a ffr=(gold white pink) fxf=(12 46 95)
+        local fk2 fx2
+        for fk2 in 0 1 2; do
+          fx2=$(( pix0 + (piw - 5) * ${fxf[fk2]} / 100 ))
+          pix_render flower "${ffr[fk2]}" 0
+          scene_blit $(( ground - PIXOUT_H )) "$fx2"
+        done
+      else
+        local -a fxf=(12 46 82) fxc=("210;153;34" "232;232;242" "247;120;186")
+        local fk2 fx2
+        for fk2 in 0 1 2; do
+          fx2=$(( pix0 + (piw - 1) * ${fxf[fk2]} / 100 ))
+          scr_put $((ground - 1)) "$fx2" 1 "$(fgt "${fxc[fk2]}")${G_FLOWER}${RS}"
+        done
+      fi ;;
     autumn)
-      # falling leaves: sparser than snow, drifting sideways as they sink
-      local lk lh lx ly lyo
-      local -a lcl=("224;136;62" "192;98;48" "210;153;34")
-      for ((lk=0; lk<(piw - 4) / 9; lk++)); do
-        lh=$(( (lk * 48271 + 7) % 83 ))
-        lyo=$(( (lh + ${TICK:-0} / 3 + lk * 2) % sch ))
-        ly=$(( stage_top + lyo ))
-        lx=$(( pix0 + 2 + lk * 9 + (lh + lyo) % 5 ))
-        (( lx >= pw - 3 )) && continue
-        scr_put "$ly" "$lx" 1 "$(fgt "${lcl[lk % 3]}")${G_LEAF}${RS}"
-      done ;;
+      if (( scnpix )); then
+        # three pixel leaves — orange, rust, gold — falling down three
+        # lanes, drifting sideways a cell as they sink
+        pix_palette leaf "${PIXREF[leaf]}" 0
+        local -a lfr=(a b c)
+        local -a llane=( $((pix0 + 2)) $((pix0 + piw - 6)) $((pix0 + piw / 2)) )
+        local lk llt
+        for lk in 0 1 2; do
+          llt=$(( stage_top + (lk * (sch / 3 + 1) + ${TICK:-0} / 3) % sch ))
+          pix_render leaf "${lfr[lk]}" 0
+          scene_blit "$llt" $(( llane[lk] + (llt + lk) % 3 ))
+        done
+      else
+        local lk lh lx ly lyo
+        local -a lcl=("224;136;62" "192;98;48" "210;153;34")
+        for ((lk=0; lk<(piw - 4) / 9; lk++)); do
+          lh=$(( (lk * 48271 + 7) % 83 ))
+          lyo=$(( (lh + ${TICK:-0} / 3 + lk * 2) % sch ))
+          ly=$(( stage_top + lyo ))
+          lx=$(( pix0 + 2 + lk * 9 + (lh + lyo) % 5 ))
+          (( lx >= pw - 3 )) && continue
+          scr_put "$ly" "$lx" 1 "$(fgt "${lcl[lk % 3]}")${G_LEAF}${RS}"
+        done
+      fi ;;
   esac
+  fi
 
   # ground · nameplate · voice (mockup .ground/.nameplate/.voice) — the
   # ground keeps the season underfoot (frost / fresh grass / leaf litter);
@@ -986,12 +1101,12 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
           for ((bj=bi*bsz; bj<(bi+1)*bsz && bj<${#hv[@]}; bj++)); do s=$((s + hv[bj])); c=$((c + 1)); done
           (( c > 0 )) && pts+="$(( s / c )) "
         done
-        dspark "${pts% }"; row+="$DSP"
+        dspark "${pts% }"; row+=" $DSP"
         (( nb < spark_w )) && row+="$(repeat_str " " $((spark_w - nb)))"
-      else row+="${FA}$(repeat_str "·" "$spark_w")${RS}"; fi
+      else row+=" ${FA}$(repeat_str "·" "$spark_w")${RS}"; fi
       row+=" "
     fi
-    local sw=$(( spark_w > 0 ? spark_w + 1 : 0 )) rlen
+    local sw=$(( spark_w > 0 ? spark_w + 2 : 0 )) rlen
     if [[ $nm == health && -z $v ]]; then
       row+="${FA}─ private · by design${RS}"
       rlen=$(( lab_w + sw + 21 ))

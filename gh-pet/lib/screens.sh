@@ -265,8 +265,8 @@ stat_detail_info() { # assoc_name idx → D_WHY D_SRC D_URL D_OPEN
   D_WHY="" D_SRC="" D_URL="" D_OPEN="open"
   case ${STAT_NAMES[i]} in
     hunger)
-      if (( ${P[MERGES7]:-0} > 0 )); then D_WHY="${P[MERGES7]} PRs merged in the last 7 days · newest #${P[MERGE_NUM]:-?}, ${P[MERGE_AGO_H]}h ago · each merge feeds 14, halving every 1.5 days"
-      else D_WHY="no PRs merged in the last 7 days · each merge feeds 14, halving every 1.5 days — the bowl is empty"; fi
+      if (( ${P[MERGES7]:-0} > 0 )); then D_WHY="${P[MERGES7]} PRs merged in the last 7 days · newest #${P[MERGE_NUM]:-?}, ${P[MERGE_AGO_H]}h ago · each merge feeds 14, halving every 2 days"
+      else D_WHY="no PRs merged in the last 7 days · each merge feeds 14, halving every 2 days — the bowl is empty"; fi
       # cached: this runs per row per frame; the label going stale at midnight
       # is cosmetic (the URL doesn't embed the date)
       [[ -z ${_DATE7:-} ]] && _DATE7=$(date_ago 7)

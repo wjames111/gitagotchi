@@ -103,7 +103,7 @@ shows it. Windows are rolling and computed at refresh time — no stored counter
 
 | # | Stat | GitHub signal | Formula sketch | Pet expression |
 |---|---|---|---|---|
-| 1 | **Hunger** (fullness) | Merged PRs, rolling 7 days | each merge contributes `14 · 0.5^(days_ago/1.5)`, clamp 0–100 — a full bowl takes a real multi-merge rhythm | eating animation when a new merge is detected live; whines at empty bowl after ~3 dry days |
+| 1 | **Hunger** (fullness) | Merged PRs, rolling 7 days | each merge contributes `14 · 0.5^(days_ago/2)`, clamp 0–100 — a full bowl takes a real multi-merge rhythm, but a weekend off doesn't empty it | eating animation when a new merge is detected live; whines at empty bowl after ~3 dry days |
 | 2 | **Energy** | Gaps in the event stream | rested if ≥1 quiet gap of 6h+ in last 24h (base 58); drained by `events_per_day / personal_baseline` sustained > 1.75× | sleeps (`zZz`) during your inactivity; frazzled sprite + eye-bags when overworked — the anti-burnout mechanic |
 | 3 | **Mood** | Net social feedback, last 7d | `stars_received + reactions_received + approvals − 2·changes_requested`, squashed into 5 buckets (ecstatic needs ≥ +25) | drives the face sprite: ecstatic / content / neutral / grumpy / miserable |
 | 4 | **Fitness** | Contribution *consistency*, not volume | `100 · (active_days_of_last_21 / 21)^1.3` | fit pet stretches during idles; unfit pet grows a round ASCII belly |
@@ -353,8 +353,17 @@ Each phase is independently demo-able — phase 0 is already a fun tweet.
 
 ## 11. Parked for v2
 
-- Contribution-graph **garden** scenery behind the pet (active days → flowers), real-date
-  seasons and day/night from local clock.
+- Contribution-graph **garden** scenery behind the pet (active days → flowers).
+  ~~Real-date seasons and day/night from local clock~~ — SHIPPED: the dense stage
+  reads the wall clock (`scene_calc`, util.sh). Night (20:00–05:59) raises a
+  pixel crescent moon, two 4-point pixel sparkles and a half-block mote field,
+  and cools the whole pixel palette (`PIX_NIGHT` in `pix_palette`'s cache key);
+  winter drops pixel snowflakes, spring roots pixel blossoms on the floor,
+  autumn sheds pixel leaves (sprites in `pix_scene_register`, drawn through
+  `scene_blit`'s obstacle ledger so weather passes behind the cast); the
+  ground line wears the season. A summer noon renders the mockup-canonical
+  frame — tests pin that. Knobs: `GITAGOTCHI_PRETEND_HOUR`,
+  `GITAGOTCHI_PRETEND_MONTH`, `GITAGOTCHI_HEMI=S`, `--demo night|winter|spring|autumn`.
 - Breeding/eggs: a repo with two co-authors hatches a guest egg? (needs a persistence story
   that stays within the derive-from-GitHub invariant — fun puzzle).
 - `gh pet badge` → render your pet as SVG for README embedding.
