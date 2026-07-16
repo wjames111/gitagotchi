@@ -368,47 +368,91 @@
 /* ───────────── pixel pet (half-block simulation) ───────────── */
 const PAL = {O:'#dea584', D:'#a97e63', W:'#ffe9d6', K:'#22272e', P:'#f778ba',
              R:'#e8927c', S:'#c98f70', '.':null};
-const F1 = [
-"........................",
-"....PP............PP....",
-"......DOOOOOOOOOOD......",
-".....DOOOOOOOOOOOOD.....",
-"..PPPDOOOOOOOOOOOODPPP..",
-".....DOKWOOOOOOKWOD.....",
-".....DOOOOOOOOOOOOD.....",
-"..PPPDOROOOKKOOORODPPP..",
-".....DOOOOOOOOOOOOD.....",
-"......DOOOOOOOOOOD......",
-".......DDOOOOOODD.......",
-"......DOSOOOOOOSOD......",
-".....DOOWWWWWWOOOD.DD...",
-".....DOOWWWWWWOOODDOD...",
-"......DOOOOOOOOOOD......",
-".......DOD....DOD.......",
-"........................",
-"........................"];
-const F2 = [
-"........................",
-"...PP..............PP...",
-"......DOOOOOOOOOOD......",
-".....DOOOOOOOOOOOOD.....",
-".PPPPDOOOOOOOOOOOODPPPP.",
-".....DOKWOOOOOOKWOD.....",
-".....DOOOOOOOOOOOOD.....",
-".PPPPDOROOOKKOOORODPPPP.",
-".....DOOOOOOOOOOOOD.....",
-"......DOOOOOOOOOOD......",
-".......DDOOOOOODD.......",
-"......DOSOOOOOOSOD.DD...",
-".....DOOWWWWWWOOODDOD...",
-".....DOOWWWWWWOOOD......",
-"......DOOOOOOOOOOD......",
-".......DOD....DOD.......",
-"........................",
-"........................"];
-const BLINK = F1.map((r,i)=> i===5 ? r.replace(/KW/g,'DD') : r);
 
-const PX = 9;
+function closeEyes(g){var H=g.length,W=g[0].length,rows=g.map(function(r){return r.split('')});
+  var Ks=[];for(var y=0;y<H;y++)for(var x=0;x<W;x++)if(g[y][x]==='K')Ks.push([x,y]);
+  Ks.forEach(function(p){rows[p[1]][p[0]]='D';});
+  Ks.forEach(function(p){[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=p[0]+d[0],ny=p[1]+d[1];
+    if(nx>=0&&nx<W&&ny>=0&&ny<H&&g[ny][nx]==='W')rows[ny][nx]='D';});});
+  return rows.map(function(r){return r.join('');});}
+
+const F1 = [
+"................................................",
+"................................................",
+"........PPPP........................PPPP........",
+"........PPPP........................PPPP........",
+".............DOOOOOOOOOOOOOOOOOOOOD.............",
+"...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........",
+"...........DDOOOOOOOOOOOOOOOOOOOOOODD...........",
+"..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........",
+"....PPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPP....",
+"....PPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPP....",
+"..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........",
+"..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........",
+"..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........",
+"..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........",
+"....PPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPP....",
+"....PPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPP....",
+"..........DDSOOOOOOOOOOOOOOOOOOOOOSSDD..........",
+"...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........",
+"...........DDSSOOOOOOOOOOOOOOOOOSSSDD...........",
+".............DDSSOOOOOOOOOOOOOSSSDD.............",
+"..............DDDSOOOOOOOOOOOSSDDD..............",
+"..............DDDDOOOOOOOOOOOODDDD..............",
+".............DDOSSOOOOOOOOOOOOSSODD.............",
+"...........DDOOOSSOOOOOOOOOOOOSSOSDD............",
+"...........DDOOOWWWWWWWWWWWOOOOOOSDD...DD.......",
+"..........DDOOOOWWWWWWWWWWWWOOOOOSDD..DDDD......",
+"..........DDSOOOWWWWWWWWWWWWOOOOOSDDDDOSDD......",
+"...........DDOOOOWWWWWWWWWWOOOOOOSDDDDSSD.......",
+"...........DDSSOOOOOOOOOOOOOOOOOSSDDD...........",
+".............DDOOOSSSSSSSSSSSOOOSDD.............",
+".............DDSOSSD........DSOSSDD.............",
+"...............DSSD..........DSSD...............",
+"................................................",
+"................................................",
+"................................................",
+"................................................"];
+const F2 = [
+"................................................",
+"................................................",
+"......PPPP............................PPPP......",
+"......PPPP............................PPPP......",
+".............DOOOOOOOOOOOOOOOOOOOOD.............",
+"...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........",
+"...........DDOOOOOOOOOOOOOOOOOOOOOODD...........",
+"..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........",
+"..PPPPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPPPP..",
+"..PPPPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPPPP..",
+"..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........",
+"..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........",
+"..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........",
+"..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........",
+"..PPPPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPPPP..",
+"..PPPPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPPPP..",
+"..........DDSOOOOOOOOOOOOOOOOOOOOOSSDD..........",
+"...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........",
+"...........DDSSOOOOOOOOOOOOOOOOOSSSDD...........",
+".............DDSSOOOOOOOOOOOOOSSSDD.............",
+"..............DDDSOOOOOOOOOOOSSDDD..............",
+"..............DDDDOOOOOOOOOOOODDDD..............",
+".............DDOSSOOOOOOOOOOOOSSODD....DD.......",
+"...........DDOOOSSOOOOOOOOOOOOSSOSDD..DDDD......",
+"...........DDOOOWWWWWWWWWWWOOOOOOSDDDDOSDD......",
+"..........DDOOOOWWWWWWWWWWWWOOOOOSDDDDSSD.......",
+"..........DDSOOOWWWWWWWWWWWWOOOOOSDDD...........",
+"...........DDOOOOWWWWWWWWWWOOOOOOSDD............",
+"...........DDSSOOOOOOOOOOOOOOOOOSSDD............",
+".............DDOOOSSSSSSSSSSSOOOSDD.............",
+".............DDSOSSD........DSOSSDD.............",
+"...............DSSD..........DSSD...............",
+"................................................",
+"................................................",
+"................................................",
+"................................................"];
+const BLINK = closeEyes(F1);
+
+const PX = 4.5;
 function renderPix(el, map, px){
   px = px || PX;
   el.style.width  = map[0].length*px+'px';
@@ -543,7 +587,7 @@ function cmpRows(mine){
 }
 document.getElementById('cmp-me-rows').innerHTML=cmpRows(true);
 document.getElementById('cmp-them-rows').innerHTML=cmpRows(false);
-const meMini=document.createElement('div'); renderPix(meMini,F1,5);
+const meMini=document.createElement('div'); renderPix(meMini,F1,2.5);
 meMini.style.display='inline-block'; document.getElementById('cmp-me').appendChild(meMini);
 document.getElementById('cmp-them').innerHTML =
  `<pre class="cmp-pet p2">  /\\_/\\

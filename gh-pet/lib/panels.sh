@@ -1247,9 +1247,9 @@ draw_friends_x() {
       scr_put "$pr" $(( px0 + (piw - ${#chip}) / 2 )) ${#chip} \
         "$(fgt "$prgb")${C_DIM}[ ${RS}$(fgt "$prgb")■ ${lang_lc}${RS}$(fgt "$prgb")${C_DIM} ]${RS}"
       pr=$((pr + 2))
-      # five mini rows: enough to gossip, not enough to surveil
-      local -a pkeys=(HAPPINESS HUNGER ENERGY FITNESS SOCIAL)
-      local -a pnames=(happy hunger energy fitness social)
+      # mini rows to match the compare view: enough to gossip, not enough to surveil (health stays private)
+      local -a pkeys=(HAPPINESS HUNGER ENERGY FITNESS SOCIAL CLEAN CURIOSITY WISDOM)
+      local -a pnames=(happy hunger energy fitness social clean curiosity wisdom)
       local pk
       local ppitch=1
       (( ph - pr >= 2 * ${#pkeys[@]} + 6 )) && ppitch=2   # breathing room

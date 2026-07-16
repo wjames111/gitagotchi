@@ -102,7 +102,7 @@
 </div>
 
 <script>
-const SPRITE = {"f1": ["........................", "....PP............PP....", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", "..PPPDOOOOOOOOOOOODPPP..", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", "..PPPDOROOOKKOOORODPPP..", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD......", ".....DOOWWWWWWOOOD.DD...", ".....DOOWWWWWWOOODDOD...", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "f2": ["........................", "...PP..............PP...", "......DOOOOOOOOOOD......", ".....DOOOOOOOOOOOOD.....", ".PPPPDOOOOOOOOOOOODPPPP.", ".....DOKWOOOOOOKWOD.....", ".....DOOOOOOOOOOOOD.....", ".PPPPDOROOOKKOOORODPPPP.", ".....DOOOOOOOOOOOOD.....", "......DOOOOOOOOOOD......", ".......DDOOOOOODD.......", "......DOSOOOOOOSOD.DD...", ".....DOOWWWWWWOOODDOD...", ".....DOOWWWWWWOOOD......", "......DOOOOOOOOOOD......", ".......DOD....DOD.......", "........................", "........................"], "pal": {"O": "#dea584", "D": "#914e27", "W": "#f3e0d5", "S": "#d18255", "K": "#22272e", "P": "#f778ba", "R": "#e6c6b3"}};   // Zeruko f1/f2 + palette
+const SPRITE = {"f1": ["................................................", "................................................", "........PPPP........................PPPP........", "........PPPP........................PPPP........", ".............DOOOOOOOOOOOOOOOOOOOOD.............", "...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........", "...........DDOOOOOOOOOOOOOOOOOOOOOODD...........", "..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........", "....PPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPP....", "....PPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPP....", "..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........", "..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........", "..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........", "..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........", "....PPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPP....", "....PPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPP....", "..........DDSOOOOOOOOOOOOOOOOOOOOOSSDD..........", "...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........", "...........DDSSOOOOOOOOOOOOOOOOOSSSDD...........", ".............DDSSOOOOOOOOOOOOOSSSDD.............", "..............DDDSOOOOOOOOOOOSSDDD..............", "..............DDDDOOOOOOOOOOOODDDD..............", ".............DDOSSOOOOOOOOOOOOSSODD.............", "...........DDOOOSSOOOOOOOOOOOOSSOSDD............", "...........DDOOOWWWWWWWWWWWOOOOOOSDD...DD.......", "..........DDOOOOWWWWWWWWWWWWOOOOOSDD..DDDD......", "..........DDSOOOWWWWWWWWWWWWOOOOOSDDDDOSDD......", "...........DDOOOOWWWWWWWWWWOOOOOOSDDDDSSD.......", "...........DDSSOOOOOOOOOOOOOOOOOSSDDD...........", ".............DDOOOSSSSSSSSSSSOOOSDD.............", ".............DDSOSSD........DSOSSDD.............", "...............DSSD..........DSSD...............", "................................................", "................................................", "................................................", "................................................"], "f2": ["................................................", "................................................", "......PPPP............................PPPP......", "......PPPP............................PPPP......", ".............DOOOOOOOOOOOOOOOOOOOOD.............", "...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........", "...........DDOOOOOOOOOOOOOOOOOOOOOODD...........", "..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........", "..PPPPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPPPP..", "..PPPPPPPPDDOOOOOOOOOOOOOOOOOOOOOOOSDDPPPPPPPP..", "..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........", "..........DDOOKKWWOOOOOOOOOOOOKKWWOSDD..........", "..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........", "..........DDOOOOOOOOOOOOOOOOOOOOOOOSDD..........", "..PPPPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPPPP..", "..PPPPPPPPDDOORROOOOOOKKKKOOOOOORROSDDPPPPPPPP..", "..........DDSOOOOOOOOOOOOOOOOOOOOOSSDD..........", "...........DDOOOOOOOOOOOOOOOOOOOOOSDD...........", "...........DDSSOOOOOOOOOOOOOOOOOSSSDD...........", ".............DDSSOOOOOOOOOOOOOSSSDD.............", "..............DDDSOOOOOOOOOOOSSDDD..............", "..............DDDDOOOOOOOOOOOODDDD..............", ".............DDOSSOOOOOOOOOOOOSSODD....DD.......", "...........DDOOOSSOOOOOOOOOOOOSSOSDD..DDDD......", "...........DDOOOWWWWWWWWWWWOOOOOOSDDDDOSDD......", "..........DDOOOOWWWWWWWWWWWWOOOOOSDDDDSSD.......", "..........DDSOOOWWWWWWWWWWWWOOOOOSDDD...........", "...........DDOOOOWWWWWWWWWWOOOOOOSDD............", "...........DDSSOOOOOOOOOOOOOOOOOSSDD............", ".............DDOOOSSSSSSSSSSSOOOSDD.............", ".............DDSOSSD........DSOSSDD.............", "...............DSSD..........DSSD...............", "................................................", "................................................", "................................................", "................................................"], "pal": {"O": "#dea584", "D": "#914e27", "W": "#f3e0d5", "S": "#d18255", "K": "#22272e", "P": "#f778ba", "R": "#e6c6b3"}};   // Zeruko f1/f2 + palette
 
 /* ── tiny pixel engine ── */
 function renderPix(el,map,pal,px,extra){
@@ -124,8 +124,15 @@ function stamp(el,grid,pal,px,x,y,op){
   s.style.cssText+=`position:absolute;left:${x}px;top:${y}px;opacity:${op??1}`;
   el.appendChild(s); return s;
 }
-const closed=g=>g.map(r=>r.replace(/WKW/g,'WDW').replace(/KW/g,'DD')
-                          .replace(/WK/g,'DD').replace(/DKD/g,'DDD'));
+
+function closeEyes(g){var H=g.length,W=g[0].length,rows=g.map(function(r){return r.split('')});
+  var Ks=[];for(var y=0;y<H;y++)for(var x=0;x<W;x++)if(g[y][x]==='K')Ks.push([x,y]);
+  Ks.forEach(function(p){rows[p[1]][p[0]]='D';});
+  Ks.forEach(function(p){[[1,0],[-1,0],[0,1],[0,-1]].forEach(function(d){var nx=p[0]+d[0],ny=p[1]+d[1];
+    if(nx>=0&&nx<W&&ny>=0&&ny<H&&g[ny][nx]==='W')rows[ny][nx]='D';});});
+  return rows.map(function(r){return r.join('');});}
+
+const closed=closeEyes;
 
 /* ── stamps ── */
 const SUN=[".Y..Y..Y.",".YYYYYY.","YYYYYYYY".slice(0,8)+"","YYYYYYYY",".YYYYYY.",".Y..Y..Y."]
@@ -200,10 +207,10 @@ function makeScene(root, opts){
     if(night) f=closed(f);
     let extra=[];
     if(season==='winter'){
-      let T=18; f.forEach((r,i)=>{if(/[^.]/.test(r)&&i<T)T=i});
+      let T=f.length; f.forEach((r,i)=>{if(/[^.]/.test(r)&&i<T)T=i});
       f.forEach((r,i)=>{}); // noop
       const tops={};
-      for(let x=0;x<24;x++){for(let y=0;y<18;y++){if(f[y][x]!=='.'){tops[x]=y;break}}}
+      for(let x=0;x<f[0].length;x++){for(let y=0;y<f.length;y++){if(f[y][x]!=='.'){tops[x]=y;break}}}
       Object.entries(tops).forEach(([x,y])=>{ if(y<=T+1) extra.push([+x,y-1,'#e6edf3']); });
     }
     return {f,extra};
@@ -270,7 +277,7 @@ document.getElementById('pet').classList.add('lay-pet');
 
 let season='summer', night=true, scene=null, T=0;
 function rebuild(){
-  scene=makeScene(big,{season, night, px:4, petPx:8, groundUp:46});
+  scene=makeScene(big,{season, night, px:4, petPx:4, groundUp:46});
   document.getElementById('scenetag').textContent=scene.label;
   const cfg=SEASONS[season];
   document.querySelectorAll('.chip').forEach(c=>{c.style.setProperty('--sc',cfg.hue);
@@ -302,7 +309,7 @@ const minis=[];
 });
 requestAnimationFrame(()=>{
   rebuild();
-  minis.forEach(m=>{ m.scene=makeScene(m.el,{season:m.season, night:m.night, px:2.5, petPx:3.5, groundUp:24}); });
+  minis.forEach(m=>{ m.scene=makeScene(m.el,{season:m.season, night:m.night, px:2.5, petPx:1.75, groundUp:24}); });
   setInterval(()=>{ T++;
     scene && scene.tick(T);
     minis.forEach((m,i)=>m.scene.tick(T+i*2));
