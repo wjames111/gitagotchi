@@ -125,16 +125,32 @@ elif [[ -n $TOKEN ]]; then
   # We store the fingerprint, never the token itself.
   if have shasum; then TOKEN_FP=$(printf '%s' "$TOKEN" | shasum -a 256 | cut -c1-16)
   else TOKEN_FP=$(printf '%s' "$TOKEN" | sha256sum | cut -c1-16); fi
-  if [[ -f $CACHE_ROOT/.me ]] && IFS='|' read -r _mefp _melogin < "$CACHE_ROOT/.me" \
-       && [[ $_mefp == "$TOKEN_FP" && -n $_melogin ]]; then
+  # `read` returns non-zero when it hits EOF without a newline — even though it
+  # HAS filled the variables. The file is written with printf and no trailing
+  # newline, so this && chain always died on a cache hit and every launch paid
+  # for a /user round-trip. Read first, judge after; and write the newline.
+  _mefp="" _melogin=""
+  [[ -f $CACHE_ROOT/.me ]] && IFS='|' read -r _mefp _melogin < "$CACHE_ROOT/.me"
+  if [[ $_mefp == "$TOKEN_FP" && -n $_melogin ]]; then
     ME=$_melogin
   else
     ME=$(curl -sS --max-time 10 -H "Authorization: Bearer $TOKEN" "$API/user" 2>/dev/null | jq -r '.login // empty')
-    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s|%s' "$TOKEN_FP" "$ME" > "$CACHE_ROOT/.me"; }
+    [[ -n $ME ]] && { mkdir -p "$CACHE_ROOT"; printf '%s|%s\n' "$TOKEN_FP" "$ME" > "$CACHE_ROOT/.me"; }
   fi
 fi
 TARGET=${ARG_LOGIN:-$ME}
 [[ -z $TARGET ]] && die "no login: run 'gh auth login' or pass one (gh-pet <login>)"
+# TARGET becomes a directory under CACHE_ROOT, so anything that is not a real
+# login has to be refused HERE. `gh-pet FOO=1` — an env var written after the
+# command instead of before it — otherwise sets ARG_LOGIN=FOO=1 and quietly
+# mkdirs a cache entry for it, which is where FITNESS=100 and friends came from.
+# GitHub logins: 1-39 of [A-Za-z0-9-], never leading/trailing '-'.
+if [[ ! $TARGET =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$ ]]; then
+  case $TARGET in
+    *=*) die "'$TARGET' is not a login — env vars go BEFORE the command: ${TARGET%%=*}=… gh-pet" ;;
+    *)   die "'$TARGET' is not a GitHub login (letters, digits and dashes; 39 max)" ;;
+  esac
+fi
 # ME is canonical (from the API) but TARGET may be typed any way; miss the match
 # and your own pet is fetched as a stranger's — SELF gates the authed tier, so
 # health and notifications would silently go missing (same_login, util.sh)
