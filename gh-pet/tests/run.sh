@@ -296,8 +296,11 @@ BEARDN=$(
 )
 assert_contains "$BEARDN" "baldcount 0" "no species is shaved by a nap, an illness or a mid-merge bite"
 assert_contains "$BEARDN" "cocoon 0"    "the hibernation cocoon still hides the beard"
-assert_contains "$BEARDN" "idle_1 .....DOROBBKKBBOROD....." "the waking bear wears its beard around its mouth"
-assert_contains "$BEARDN" "sleep_1 .....DOROBBDDBBOROD....." "the sleeping bear wears it in the very same place"
+# doubled from the authored .....DOROBBKKBBOROD..... — the art is anamorphic
+# (48x18, half-width pixels), so the mustache runs come out twice as wide. The
+# open mouth (KKKK) and the sleeping one (DDDD) still sit inside the same flanks.
+assert_contains "$BEARDN" "idle_1 ..........DDOORROOBBBBKKKKBBBBOORROSDD.........." "the waking bear wears its beard around its mouth"
+assert_contains "$BEARDN" "sleep_1 ..........DDOORROOBBBBDDDDBBBBOORROSDD.........." "the sleeping bear wears it in the very same place"
 
 # the beard is earned: a guest turning up must not shave the host. Everyone
 # shrinks to half scale while hosting, and the shrink used to drop it.
