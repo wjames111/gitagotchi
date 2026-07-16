@@ -346,7 +346,12 @@ pet_compose() { # assoc_name frame blink faint [flip]
     (( GATE_EXPR )) || { moodf=0 bigeye=0 brows=0 wag=0 spearh=0 reading=""; }
     (( GATE_BODY )) || body=0
     (( GATE_BEARD )) || beard=0
-    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading"
+    # the goodbye wave (§5.9): the quit handler pins PET_WAVE (-1/1 swing) so the
+    # idle pet raises a paw and waves you off. Only the self pet mid-idle waves —
+    # friend and compare renders never inherit it.
+    local wave=0
+    [[ $frame == idle_* && ${PET_WAVE:-0} != 0 ]] && wave=${PET_WAVE}
+    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading" "$wave"
     PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
   else
     # ASCII fallback tier: two-frame pixel names collapse to the §6 frames
