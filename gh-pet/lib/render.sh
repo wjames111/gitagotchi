@@ -388,6 +388,29 @@ pet_compose() { # assoc_name frame blink faint [flip]
   fi
 }
 
+# egg_compose (§5.9): the egg-stage twin of pet_compose. A pet younger than the
+# hatch threshold is still an egg — no species, no paw — so the goodbye wobbles
+# the egg instead of waving a character off. Fills PET_LINES/PET_W/PET_H the same
+# way pet_compose does, and reports the wobble shift in PET_XWOB: the pixel egg
+# has no tilt frame, so it leans by a one-column shift (the way the stage wobbles
+# it), while the ASCII egg tilts in the sprite itself.
+egg_compose() { # assoc_name tilt(-1|0|1)
+  local -n P=$1
+  local tilt=$2
+  PET_XWOB=0
+  if [[ -n $PIX_MODE && -n ${PIXF[egg/idle_1]:-} ]]; then
+    pix_palette egg "${P[COLOR_HEX]:-#dea584}" 0
+    pix_render egg idle_1 0 0 0
+    PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
+    PET_XWOB=$tilt
+  else
+    egg_frame "$tilt" "$(fg "${P[COLOR256]:-180}")"
+    PET_LINES=("${SPCOMP_COL[@]}")
+    PET_H=${#PET_LINES[@]} PET_W=0
+    local l; for l in "${SPCOMP_PLAIN[@]}"; do (( ${#l} > PET_W )) && PET_W=${#l}; done
+  fi
+}
+
 # ── voice line (§7): observe, never scold; always name the fact ─────────────
 voice_pool() { # assoc_name self → fills VPOOL[] + VPOOL_URL[] (parallel)
   local -n P=$1
