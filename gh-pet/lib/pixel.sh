@@ -18,7 +18,12 @@ declare -a PIX_SPECIES=()
 declare -A PIXF PIXPAL PIXREF PIXTRIM PIX_HASFRAME PIXNAME
 
 pix_detect_mode() {
-  if [[ ${OPT_ASCII:-0} == 1 ]]; then PIX_MODE=""; return; fi
+  # ASCII sprites are the LAST resort, never a default: pixel art is what you
+  # get unless you opt out with --ascii or the terminal genuinely can't show
+  # color at all. A bare TERM=xterm reports only 8 colors via tput but renders
+  # 256-color escapes fine, so "< 256 colors" must NOT mean "fall back to ASCII"
+  # — that was demoting capable terminals. Prefer pixel whenever in doubt.
+  if [[ ${OPT_ASCII:-0} == 1 ]]; then PIX_MODE=""; return; fi   # explicit opt-out
   case "${COLORTERM:-}" in
     *truecolor*|*24bit*) PIX_MODE=T; return ;;
   esac
@@ -29,8 +34,11 @@ pix_detect_mode() {
   case "${TERM:-}" in
     *-direct|*truecolor*|xterm-kitty|iterm2*|alacritty|wezterm|foot*|ghostty*) PIX_MODE=T; return ;;
   esac
-  local n; n=$(tput colors 2>/dev/null || echo 8)
-  if (( n >= 256 )); then PIX_MODE=256; else PIX_MODE=""; fi
+  # the ONLY automatic fall to ASCII: a terminal with no color at all
+  # (TERM unset/dumb, or tput certain there are fewer than 8 colors).
+  case "${TERM:-dumb}" in ""|dumb) PIX_MODE=""; return ;; esac
+  local n; n=$(tput colors 2>/dev/null || echo 256)
+  if (( n < 8 )); then PIX_MODE=""; else PIX_MODE=256; fi
 }
 
 # locate the grid file: project override → bundled copy
