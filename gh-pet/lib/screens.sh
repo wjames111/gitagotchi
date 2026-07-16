@@ -132,7 +132,15 @@ draw_main() { # assoc_name self
     local petx=$(( (IW - PET_W) / 2 + PET_XOFF ))
     (( petx < 1 )) && petx=1
     (( petx + PET_W > IW - 1 )) && petx=$(( IW - 1 - PET_W ))
+    # the bliss float. Cozy has no z-layer — it is built row by row, and the pet
+    # IS most of the screen here — so instead of crossing panels the way dense
+    # does, the float lerps the pet from the ground to the middle of its stage.
     local pet_top=$(( SH - PET_H )) i
+    if (( ${BLISS_T:-0} > 0 )); then
+      local _mid=$(( (SH - PET_H) / 2 + (TICK / 8) % 2 ))
+      pet_top=$(( pet_top + (_mid - pet_top) * BLISS_T / 100 ))
+      (( pet_top < 0 )) && pet_top=0
+    fi
     for i in "${!PET_LINES[@]}"; do
       local w=$PET_W
       [[ -z ${PIX_MODE} || -z ${PIXF[${P[SPECIES]}/idle_1]:-} ]] && w=${#SPCOMP_PLAIN[i]}
@@ -210,7 +218,10 @@ draw_main() { # assoc_name self
     rnew
     local hnotch=""
     [[ -n ${P[CAPPED_BY]:-} ]] && hnotch=${P[HAPPY_RAW]}
-    bar_build "${P[HAPPINESS]:-0}" $((bw * 2)) "$frozen" "$hnotch"
+    # a perfect 100 goes all green and blinks, in step with the float (§8.4)
+    local hpul=0
+    (( ${P[HAPPINESS]:-0} >= 100 )) && hpul=$(( 1 + (TICK / 2) % 2 ))
+    bar_build "${P[HAPPINESS]:-0}" $((bw * 2)) "$frozen" "$hnotch" "$hpul"
     radd "  happiness " "$dimlab"
     radd "$G_HEART " "$C_HEARTS"
     RC+="$BARC"; RP+=$(repeat_str "?" $((bw * 2)))

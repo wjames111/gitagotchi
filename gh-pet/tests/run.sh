@@ -95,6 +95,64 @@ _hap=$(sed -n "s/^HAPPINESS='\([0-9]*\)'.*/\1/p" <<<"$ASP")
 _cap=$(sed -n "s/^CAPPED_BY='\(.*\)'\$/\1/p" <<<"$ASP")
 if [[ -n $_hap ]] && (( _hap > 60 )) && [[ -z $_cap ]]; then ok "aspirational stats never hard-cap (happiness $_hap > 60, uncapped)"; else fail "an aspirational stat capped a healthy pet (happiness=${_hap:-none} capped_by='$_cap')"; fi
 
+echo "· every stat must REACH its own 100 (§3.1): happiness is a weighted mean, so"
+echo "  a single stat whose terms top out short caps the composite for EVERY pet."
+echo "  mood (92) and energy (86) did exactly that until 2026-07-16 — a perfect pet"
+echo "  was arithmetically impossible and the bliss float was unreachable code."
+_pargs=(-r --arg now "$(date +%s)" --arg login octotest)
+for _f in user repos events merged approved changesreq reviewedby starred stale \
+          alerts calendar notifications medals orgs following; do
+  if [[ -s fixtures-perfect/$_f.json ]]; then _pargs+=(--slurpfile "$_f" "fixtures-perfect/$_f.json")
+  else _pargs+=(--argjson "$_f" null); fi
+done
+PST=$(jq -n "${_pargs[@]}" -f "$ROOT/lib/stats.jq" 2>/dev/null)
+_bad=""
+for _s in HUNGER ENERGY MOOD FITNESS CLEAN CURIOSITY SOCIAL WISDOM HEALTH; do
+  _sv=$(sed -n "s/^${_s}='\([0-9]*\)'.*/\1/p" <<<"$PST")
+  [[ $_sv == 100 ]] || _bad+="${_s}=${_sv:-none} "
+done
+if [[ -z $_bad ]]; then ok "every stat reaches 100, so nothing caps the composite"
+else fail "stats that cannot reach 100: ${_bad}— happiness can never be perfect and the bliss float is dead code"; fi
+_phap=$(sed -n "s/^HAPPINESS='\([0-9]*\)'.*/\1/p" <<<"$PST")
+if [[ $_phap == 100 ]]; then ok "a perfect account earns happiness 100"
+else fail "the perfect pet scored ${_phap:-none}, not 100 — 100 is unreachable, so nothing ever floats"; fi
+
+echo "· the bliss float (§8.4): a perfect 100 lifts the pet off the ground and drifts"
+echo "  it to the middle of the SCREEN on the z-layer, over every panel — and nobody"
+echo "  short of 100 ever leaves the floor"
+_PB=$(GITAGOTCHI_BLISS_T=100 "$ROOT/gh-pet" --fixtures fixtures-perfect --snapshot --cozy --ascii 2>&1)
+_PG=$("$ROOT/gh-pet" --fixtures fixtures-perfect --snapshot --cozy --ascii 2>&1)
+if [[ $_PB != "$_PG" ]]; then ok "a perfect pet floats"; else fail "the float never lifted the perfect pet off the ground"; fi
+_SB=$(GITAGOTCHI_BLISS_T=100 "$ROOT/gh-pet" --fixtures fixtures-starving --snapshot --cozy --ascii 2>&1)
+_SG=$("$ROOT/gh-pet" --fixtures fixtures-starving --snapshot --cozy --ascii 2>&1)
+if [[ $_SB == "$_SG" ]]; then ok "a capped pet keeps its feet on the ground (the knob is inert without bliss)"; else fail "a pet short of 100 floated"; fi
+# dense: the float must actually cross panels. The stage panel's bottom border is
+# a row the pet can never touch while grounded, so drawing over it is the proof
+# that the pet reached the z-layer instead of being clipped inside its own panel.
+_DZ=$(GITAGOTCHI_BLISS_T=100 COLUMNS=110 LINES=30 "$ROOT/gh-pet" --fixtures fixtures-perfect --snapshot --ascii 2>&1 \
+      | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')
+_DG=$(COLUMNS=110 LINES=30 "$ROOT/gh-pet" --fixtures fixtures-perfect --snapshot --ascii 2>&1 \
+      | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')
+# a sprite row sitting ON a panel border line: "└───( ^-^ )───┘" style
+if grep -qE '^[│└┌].*[─].*\(.*\^' <<<"$_DZ" && ! grep -qE '^[│└┌].*[─].*\(.*\^' <<<"$_DG"; then
+  ok "the float rides the z-layer over the panel borders (dense)"
+else
+  fail "the floating pet never crossed a panel border — it is still clipped inside the stage"
+fi
+(
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/dense.sh" 2>/dev/null
+  init_glyphs B
+  dmeter 100 8 0 0; _ramp=$DM
+  dmeter 100 8 0 1; _g1=$DM
+  dmeter 100 8 0 2; _g2=$DM
+  # all green means the ramp's red shoulder is gone from BOTH blink phases, and
+  # the two phases differ from each other (otherwise it is green but not blinking)
+  [[ $_g1 != "$_g2" && $_g1 != "$_ramp" ]] \
+    && [[ $_g1 != *"$RGB_RED"* && $_g2 != *"$RGB_RED"* ]] \
+    && [[ $_g1 == *"$RGB_GREEN"* && $_g2 == *"$RGB_ACT"* ]]
+) && ok "at 100 the bar is all green and blinks between the two greens" \
+  || fail "the happiness bar is not all-green-and-blinking (dmeter phases 1/2)"
+
 echo "· you are never your own guest: GitHub logins are case-insensitive, so"
 echo "  'gh-pet SELF' must still recognize self/app as its own — otherwise the"
 echo "  owner of every repo you touch reads as a stranger and you turn up on your"

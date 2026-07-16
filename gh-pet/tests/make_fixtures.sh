@@ -136,10 +136,11 @@ jq -n '[{login:"mona"},{login:"defunkt"},{login:"ashtom"}]' > "$OUT/following.js
 # binding path (and its insight string) untested. So this pet is now the literal
 # subject of §3.1: shiny medals, empty belly.
 #
-# Every stat below is at or near its ceiling, and the ceilings are low in places:
-# mood buckets top out at 92 (ecstatic), energy at 86. Raw lands at 66 — only 6
-# clear of the cap, and that is close to the best a hunger=0 pet can do (the
-# theoretical max is 72). If a future reweight raises hunger again there may be no
+# Every stat below is at or near its ceiling. Those ceilings used to be low in
+# places — mood's buckets stopped at 92, energy's terms summed to 86 — which
+# capped every pet in the game; both reach a true 100 as of 2026-07-16. Raw now
+# lands at 71, comfortably clear of the cap, and 72 is exactly the best a
+# hunger=0 pet can do (100 less hunger's 28). If a future reweight raises hunger again there may be no
 # elite pet left that the cap can bind, and this fixture stops being expressible;
 # at that point the honest move is to test the cap through a low-weight survival
 # stat (clean 5%, health 3%) instead, where it still does real work.
@@ -147,25 +148,27 @@ jq -n '[{login:"mona"},{login:"defunkt"},{login:"ashtom"}]' > "$OUT/following.js
 # missing string.
 cp "$OUT"/*.json "$OUT-starving/"
 echo '{"total_count": 0, "items": []}' > "$OUT-starving/merged.json"
-echo '{"total_count": 30, "items": []}' > "$OUT-starving/approved.json"   # mood 92 (ecstatic, the bucket ceiling)
+echo '{"total_count": 30, "items": []}' > "$OUT-starving/approved.json"   # mood 100 (ecstatic)
 echo '[]' > "$OUT-starving/stale.json"                                    # clean 100
 echo '{"critical": 0, "high": 0, "moderate": 0}' > "$OUT-starving/alerts.json"  # health 100
-# social = 7·√outbound7 + min(following,20) — take the whole following cap
+# social = 12·√outbound7 + min(following,20) — take the whole following cap
 jq -n '[range(0;20) | {login: "friend\(.)"}]' > "$OUT-starving/following.json"
 {
   ev() { jq -n --arg t "$(iso "$1")" --arg ty "$2" --arg rn "$3" \
     '{type:$ty, created_at:$t, repo:{name:$rn}}'; }
-  # three ≥6h gaps touching the last 24h → rested: energy 58 + 8·min(gaps-1,2) = 74
+  # three ≥6h gaps touching the last 24h → rested: energy 70 + 15·min(gaps-1,2) = 100
   # (the wall below starts at 25h, so the 23h→25h gap is only 2h and doesn't count)
   ev 2 IssueCommentEvent mona/sandbox;   ev 9  PullRequestReviewEvent mona/sandbox
   ev 16 IssueCommentEvent defunkt/tools; ev 23 IssueCommentEvent ashtom/notes
   ev 40 ForkEvent octotest/zigzag        # forks14 → curiosity
   # A wall of outbound review/comment traffic from 25h back. Two things ride on
   # its SHAPE, not just its size:
-  #   · social is sub-linear (7·√n), so it takes ~100 events to reach the 90s.
-  #   · energy's +12 slow bonus needs rate14 < 0.6·baseline, i.e. span < 8.4d.
+  #   · social is sub-linear (12·√n), so it takes ~44 events to reach 100.
+  #   · energy's +10 slow bonus needs rate14 < 0.6·baseline, i.e. span < 8.4d.
   #     Keeping the OLDEST event inside ~7d (the old fixture reached back 320h/13d)
-  #     is what lifts energy 74 → 86, its ceiling. Don't stretch this tail.
+  #     still earns it, but the rest gaps above already carry energy to 100 on
+  #     their own — the bonus is deliberately no longer load-bearing for the
+  #     ceiling, so this tail can be stretched without capping the pet.
   # All of it sits outside the last 24h, so the rest gaps above survive intact.
   # Eight distinct counterparts (repos30 lands on 9 with zigzag) — comfortably past
   # the min(repos30,8) cap on curiosity's everyday-signal term.
@@ -193,4 +196,28 @@ jq -n --arg s0 "$(isod 1)" --arg s1 "$(isod 2)" --arg s2 "$(isod 3)" \
     \"weeks\":[{\"contributionDays\":[${days%,}]}]}}}}}"
 } | jq . > "$OUT-starving/calendar.json"
 
-echo "fixtures written to $OUT/ and $OUT-starving/"
+# perfect variant: the starving pet with a full belly. The starving fixture is
+# already elite on all eight other stats, so feeding it is the whole difference
+# between the cap's subject and the only pet in the suite that earns the bliss
+# float (§8.4). Its job is to guard the CEILINGS: happiness is a weighted mean,
+# so one stat whose terms cannot reach 100 silently makes a perfect pet
+# impossible for everyone — which is exactly what mood (92) and energy (86) did
+# until 2026-07-16, quietly killing a celebration nobody could ever trigger.
+mkdir -p "$OUT-perfect"
+cp "$OUT-starving"/*.json "$OUT-perfect/"
+# ten PRs merged within the hour: 10 × 14 = 140, clamped → hunger 100
+jq -n --arg m "$(iso 1)" '{total_count:10, items:[range(0;10)
+  | {number:(400+.), html_url:"https://github.com/o/p/pull/\(400+.)",
+     pull_request:{merged_at:$m}}]}' > "$OUT-perfect/merged.json"
+# wisdom is the slow one: 9·ln(1+reviews) + 4·min(langs,8) + 2·years. The base
+# pet has 4 languages and ~7 years, so even 300 reviews leave it at 82 — a 99.6
+# composite that only ROUNDS to 100. Give it eight languages and ~400 reviews and
+# wisdom is a true 100, so the fixture asserts the ceiling rather than the
+# rounding rule (a guard that leans on rounding fails the moment anything drifts).
+jq '. + ["Go","Python","Elixir","Ruby"
+  | {name:("poly-" + .), full_name:("octotest/poly-" + .), language:.,
+     created_at:"2019-06-01T00:00:00Z", pushed_at:"2019-06-01T00:00:00Z", fork:false}]' \
+  "$OUT-starving/repos.json" > "$OUT-perfect/repos.json"
+echo '{"total_count": 400}' > "$OUT-perfect/reviewedby.json"
+
+echo "fixtures written to $OUT/, $OUT-starving/ and $OUT-perfect/"

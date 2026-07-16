@@ -29,10 +29,16 @@ blank_row() { rnew; rpush; }
 
 # ── bars (§2.2 ramp; §5.2 anatomy) ──────────────────────────────────────────
 BARC=""
-bar_build() { # value width frozen(0/1) [notch_at_value or ""]
-  local v=$1 w=$2 frozen=$3 notch=${4:-}
+bar_build() { # value width frozen(0/1) [notch_at_value or ""] [pulse(0/1)]
+  local v=$1 w=$2 frozen=$3 notch=${4:-} pulse=${5:-0}
   local fill=$(( (v * w + 50) / 100 )); (( fill > w )) && fill=$w
   local col; col=$(bar_color "$v"); [[ $frozen == 1 ]] && col=$C_ICE
+  # the perfect-100 blink: the caller alternates pulse 1↔2, so the bar sits all
+  # green and pulses between the two greens rather than flashing off the ramp
+  if [[ $frozen != 1 ]]; then
+    (( pulse == 1 )) && col=$C_GREEN
+    (( pulse == 2 )) && col=$C_GREEN_HI
+  fi
   local np=-1
   [[ -n $notch ]] && np=$(( notch * w / 100 ))
   BARC=""
@@ -368,10 +374,18 @@ pet_compose() { # assoc_name frame blink faint [flip]
     # friend and compare renders never inherit it.
     local wave=0
     [[ $frame == idle_* && ${PET_WAVE:-0} != 0 ]] && wave=${PET_WAVE}
+    # the party cap (cap-reward.html): a perfect 100 is a trophy, so — like the
+    # beard and the elder's specs — it is EARNED and rides through every state
+    # that still has a head. It survives sleep; gate_expr's cocoon takes it, and
+    # any pet that isn't at 100 simply never grew one.
+    local cap=0
+    (( ${P[HAPPINESS]:-0} >= 100 )) && cap=1
+    (( GATE_BEARD )) || cap=0
     # the gated tier, for a caller that re-renders this pet at half scale to
-    # host guests: the beard is earned and survives the shrink (draw_dense)
-    PET_BEARD=$beard
-    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading" "$wave"
+    # host guests: the beard and the cap are earned and survive the shrink
+    # (draw_dense) — a host at 100 keeps its hat on when company arrives
+    PET_BEARD=$beard PET_CAP=$cap
+    pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading" "$wave" "$cap"
     PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
   else
     # ASCII fallback tier: two-frame pixel names collapse to the §6 frames

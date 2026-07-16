@@ -162,6 +162,7 @@ declare -A FRROW FR_FETCHED
 
 # ── session-local animation state (the one legal non-derived state, §1) ─────
 TICK=0 PET_XOFF=0 WANDER_TGT=0
+BLISS=0 BLISS_T=0   # the bliss float: whether it's on, and the journey 0-100
 ANIM_STATE=idle ANIM_FRAME=idle_1 ANIM_BLINK=0
 NEXT_BLINK=20 BLINK_UNTIL=-1 NEXT_SWAP=0 IDLE_ALT=0
 EAT_UNTIL=-1 EAT_PHASE=0 CELEB_UNTIL=-1 STRETCH_UNTIL=-1 PERK_UNTIL=-1
@@ -729,6 +730,12 @@ anim_update() { # assoc_name self
   ANIM_BLINK=0
   WAKE_PHASE=0
   FETCH_BX="" FETCH_BY=0   # the fetch ball exists only while its case runs
+  # bliss (§8.4): a perfect 100 floats the pet into the middle of the stage and
+  # holds it there. It rides on idle alone — every other state is busy being
+  # somewhere specific (the ball, the food, the sickbed), and a host stands at
+  # the stage edge for its guests, which is the one place bliss must not move it.
+  BLISS=0
+  [[ $ANIM_STATE == idle && -z ${A[VISITORS]:-} ]] && (( ${A[HAPPINESS]:-0} >= 100 )) && BLISS=1
   case $ANIM_STATE in
     # gallery cadences: hibernate 1400ms ≈ 6 ticks, sick 1000ms ≈ 4,
     # celebrate 400ms ≈ 2, sleep 1100ms ≈ 4, eat 500ms ≈ 2 (§2.3, gallery)
@@ -848,7 +855,13 @@ anim_update() { # assoc_name self
       # No strolling mid-dismount — the gurney exit plays on a still stage.
       local wchance=90
       (( ${A[FITNESS]:-50} < 20 )) && wchance=240
-      if [[ -n ${GURNEY_OFF_AT:-} ]]; then
+      if (( BLISS )); then
+        # nothing left to want: the strolling stops and the pet drifts home to
+        # the middle, one column a tick, before it lifts off
+        WANDER_TGT=0
+        (( PET_XOFF > 0 )) && PET_XOFF=$((PET_XOFF - 1))
+        (( PET_XOFF < 0 )) && PET_XOFF=$((PET_XOFF + 1))
+      elif [[ -n ${GURNEY_OFF_AT:-} ]]; then
         :
       elif (( PET_XOFF == WANDER_TGT )); then
         (( RANDOM % wchance == 0 )) && WANDER_TGT=$(( RANDOM % 9 - 4 ))
@@ -874,6 +887,18 @@ anim_update() { # assoc_name self
       ;;
   esac
   [[ $ANIM_STATE != idle ]] && { WANDER_TGT=0; }
+  # the float itself: once centred the pet leaves the stage entirely and drifts
+  # to the middle of the SCREEN, riding the z-layer over every panel. BLISS_T is
+  # that journey, 0-100, eased 8 points a tick so it reads as drift rather than a
+  # jump — and it lives outside the case so EVERY other state brings the pet home
+  # the same way it left, which is what makes falling asleep mid-hover land it.
+  local _bt=0
+  (( BLISS && PET_XOFF == 0 )) && _bt=100
+  if (( BLISS_T < _bt )); then
+    BLISS_T=$((BLISS_T + 8)); (( BLISS_T > 100 )) && BLISS_T=100
+  elif (( BLISS_T > _bt )); then
+    BLISS_T=$((BLISS_T - 8)); (( BLISS_T < 0 )) && BLISS_T=0
+  fi
   floaters_advance
   feed_floaters_advance
   fr_floaters_advance
@@ -991,6 +1016,10 @@ if (( OPT_SNAPSHOT )); then   # compare's own --snapshot sets OPT_SNAPSHOT too
   # test/preview knob: freeze the fetch game at beat t (0-19) in the frame
   [[ ${GITAGOTCHI_FETCH_T:-} =~ ^[0-9]+$ ]] && FETCH_UNTIL=$(( 20 - GITAGOTCHI_FETCH_T ))
   anim_update S "$SELF"
+  # test/preview knob: park the bliss float at t% of its journey (0 = on the
+  # stage, 100 = hovering mid-screen). anim_update eases it 8 points a tick, so a
+  # one-frame snapshot always catches the pet still on the ground.
+  [[ ${GITAGOTCHI_BLISS_T:-} =~ ^[0-9]+$ ]] && (( BLISS )) && BLISS_T=$GITAGOTCHI_BLISS_T
   if [[ $CMD == compare ]]; then
     fetch_all "$CMP_LOGIN" 0 >/dev/null 2>&1
     derive_state "$CMP_LOGIN" || true

@@ -120,13 +120,13 @@ shows it. Windows are rolling and computed at refresh time — no stored counter
 | # | Stat | GitHub signal | Formula sketch | Pet expression |
 |---|---|---|---|---|
 | 1 | **Hunger** (fullness) | Merged PRs, rolling 7 days | each merge contributes `14 · 0.5^(days_ago/2)`, clamp 0–100 — a full bowl takes a real multi-merge rhythm, but a weekend off doesn't empty it | eating animation when a new merge is detected live; whines at empty bowl after ~3 dry days |
-| 2 | **Energy** | Gaps in the event stream | rested if ≥1 quiet gap of 6h+ in last 24h (base 58); drained by `events_per_day / personal_baseline` sustained > 1.75× | sleeps (`zZz`) during your inactivity; frazzled sprite + eye-bags when overworked — the anti-burnout mechanic |
-| 3 | **Mood** | Net social feedback, last 7d | `approvals + merges_7d − 2·changes_requested`, squashed into 5 buckets (ecstatic needs ≥ +25) | drives the face sprite: ecstatic / content / neutral / grumpy / miserable |
+| 2 | **Energy** | Gaps in the event stream | rested if ≥1 quiet gap of 6h+ in last 24h (base 70, +15 per extra gap to +30 → a true 100 on rest alone); drained by `events_per_day / personal_baseline` sustained > 1.75× | sleeps (`zZz`) during your inactivity; frazzled sprite + eye-bags when overworked — the anti-burnout mechanic |
+| 3 | **Mood** | Net social feedback, last 7d | `approvals + merges_7d − 2·changes_requested`, squashed into 5 buckets `{12, 34, 56, 78, 100}` (ecstatic needs ≥ +25) | drives the face sprite: ecstatic / content / neutral / grumpy / miserable |
 | 4 | **Fitness** | Contribution *consistency*, not volume | `100 · (active_days_of_last_21 / 21)^1.3` | fit pet stretches during idles; unfit pet grows a round ASCII belly |
 | 5 | **Cleanliness** | Repo hygiene on your top-N recently-pushed repos | `100 − 12·(open issues idle >30d) − 6·(open PRs idle >30d)`, floor 0 | flies (`.·°`) buzz around a messy pet; triaging = grooming |
 | 6 | **Curiosity** | Distinct repos touched (30d) + stars given + forks made (14d), new language touched (30d bonus) | `min(100, 5·min(repos,8) + 6·stars + 10·forks + 15·new_lang)` | toys scattered near the pet; bats a ball around |
-| 7 | **Social** | Outbound comments/reviews on *others'* repos (7d) + friends followed | `min(100, 7·√outbound + min(following, 20))` — square-root curve, saturating takes ~200 comments | low social → pet stares out a little ASCII window |
-| 8 | **Wisdom** | Reviews given + language diversity + account age | slow log-scale composite; effectively monotonic | earns tiny glasses at 60+; elder beard stacks |
+| 7 | **Social** | Outbound comments/reviews on *others'* repos (7d) + friends followed | `min(100, 12·√outbound + min(following, 20))` — square-root curve; full marks at ~44 comments, a busy maintainer's week | low social → pet stares out a little ASCII window |
+| 8 | **Wisdom** | Reviews given + language diversity + account age | `min(100, 9·ln(1+reviews) + 4·min(langs,8) + 2·years)` — slow log-scale composite, effectively monotonic; full marks at ~300 reviews across 8 languages on a decade-old account | earns tiny glasses at 60+; elder beard stacks |
 | 9 | **Health** *(self only — needs auth)* | Open Dependabot/security alerts on your repos | `100 − 20·critical − 10·high − 5·moderate`, floor 0 | sick sprite with thermometer; fixing alerts is the medicine. Invisible on friends — sickness is private, by design |
 | 10 | **Happiness** | Composite of 1–9 | see §3.1 | headline stat; hearts float up when > 80 |
 
@@ -148,6 +148,16 @@ doesn't bite until <20, so nothing caught it). The inert block is now 15% and th
 went to hunger/energy/mood. Weights are whole percents summing to 100 and are mirrored in
 `lib/panels.sh` `VX_COMP_W` (the "how it's built" bars) and `lib/screens.sh` `D_SRC` — change
 all three together.
+
+**Every stat must be able to reach its own 100.** A weighted mean is only as high as its
+inputs, so one stat whose terms top out short quietly caps *every pet in the game* — and the
+tell is subtle, because the composite still moves and nothing looks broken. Until 2026-07-16
+mood's top bucket was 92 and energy's terms summed to 86, which put the arithmetic ceiling on
+happiness at **96**: a perfect pet was impossible, and the perfect-100 celebrations (the
+three-heart halo, and later the bliss float) were unreachable code that no account could ever
+trigger. Ceilings are now real on all nine, `tests/fixtures-perfect` is the pet that earns
+them, and the suite fails by name if any stat stops reaching 100. When retuning a stat, ask
+what its maximum is — not just what it does in the middle of the range.
 
 **Misery cap:** if any *survival* stat (hunger, energy, mood, cleanliness, health) < 20,
 happiness is capped at 60 — a starving pet cannot be happy no matter how shiny its medals.

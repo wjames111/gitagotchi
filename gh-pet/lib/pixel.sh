@@ -551,9 +551,21 @@ pix_palette() { # species_id linguist_hex faint(0/1)
   else
     PC[J]="47;95;176"; PC[L]="244;240;226"; PC[Q]="201;195;173"
   fi
+  # reserved letters o/y/g/s/b/w/h: the party cap — outline / highlight / gold /
+  # shade / brim / button / ♥ badge (cap-reward.html). LOWERCASE, so none of them
+  # collides with the authored grids' O D W K P R S or the reserved letters above.
+  # Fixed gold, never hue-shifted with the pelt: the reward has to read as the
+  # same trophy on all 50 species, whatever the top language paints the body.
+  if [[ $faint == 1 ]]; then
+    PC[o]="40;27;5"; PC[y]="114;103;62"; PC[g]="110;90;28"; PC[s]="97;71;19"
+    PC[b]="79;56;12"; PC[w]="114;113;108"; PC[h]="114;49;78"
+  else
+    PC[o]="90;61;12"; PC[y]="255;229;138"; PC[g]="246;201;63"; PC[s]="216;159;43"
+    PC[b]="176;125;28"; PC[w]="255;253;242"; PC[h]="255;111;174"
+  fi
   if [[ ${PIX_NIGHT:-0} == 1 ]]; then
     local xl
-    for xl in X V Y Z T H J L Q; do moonlit "${PC[$xl]}"; PC[$xl]=$MLIT; done
+    for xl in X V Y Z T H J L Q o y g s b w h; do moonlit "${PC[$xl]}"; PC[$xl]=$MLIT; done
   fi
 }
 
@@ -1338,6 +1350,162 @@ pix_apply_wave() { # nameref grid, side (1 right / -1 left), swing (-1/1)
   WAVE_TOP=$(( tipY - 1 )); (( WAVE_TOP < 0 )) && WAVE_TOP=0
 }
 
+# ── the party cap (cap-reward.html) — the 100%-happiness reward ─────────────
+# A procedural accessory, not per-species art: anchor on the K eye-pixels for
+# the face centre, walk up the centre columns to the crown, and stamp a gold
+# dome with a white button, a ♥ badge and a brim. One routine, all 50 species.
+#
+# This is the one transform that GROWS the canvas. Every other accessory fits
+# inside the authored grid (the spear and the wave only widen the trim window
+# into rows the art already has); a cap sits ABOVE the crown, and the art runs
+# to the crown by construction, so there is nowhere to put it. It prepends
+# CAP_OT blank rows, stamps into them, and reports CAP_TOP so pix_render can
+# re-base its trim window onto the taller grid — the gurney does the same from
+# the bottom. CAP_OT=7 is the design's headroom: enough for a crown at row 0.
+#
+# The geometry below is the gallery's withCap() to the pixel. Its numbers are in
+# the design's own 48-wide units (cap-reward.html draws on this exact 48×18 art),
+# NOT the 24-wide units the other pix_apply_* transforms use — hence xs/2 rather
+# than xs. On 48-wide art that is identity; a 24-wide grid halves the cap.
+CAP_OT=7
+CAP_TOP=0
+CAP_CX=0 CAP_CROWN=0
+CAP_DOME_W=(9 8 8 7 5 1)   # dome half-width by row, bottom→top: round(9·√(1-(k/6)²))
+
+# pix_cap_anchor id frame → CAP_CX / CAP_CROWN — the gallery's anchor(), run on
+# the AUTHORED art. It must not read the composed grid: pix_apply_reading paints
+# the paws in K, the same letter as the eyes ("paws reuse K", pix_palette), so
+# the mean of every K slides off the face and the cap lands on the book. Same
+# trap pix_beard_anchor was written against; the art is what owns the head.
+pix_cap_anchor() { # species_id frame
+  local -a ig; local IFS=$'\n'; ig=(${PIXF[$1/$2]:-}); unset IFS
+  (( ${#ig[@]} )) || { ig=(${PIXF[$1/idle_1]:-}); }
+  (( ${#ig[@]} )) || { CAP_CX=0 CAP_CROWN=0; return 1; }
+  local W=${#ig[0]} H=${#ig[@]}
+  # xs on its own line: bash expands every RHS in a `local` BEFORE it assigns
+  # any of them, so `local xs=2 o3=$((3*xs/2))` reads an unset xs and o3 lands
+  # on 0 — which silently narrows the crown scan to a single column
+  local xs=${PIX_XS:-1}
+  local o3=$(( 3 * xs / 2 ))
+  local y x sum=0 n=0 row rest pre idx off
+  for ((y=0; y<H; y++)); do
+    row=${ig[y]}
+    [[ $row == *K* ]] || continue
+    off=0; rest=$row
+    while [[ $rest == *K* ]]; do
+      pre=${rest%%K*}; idx=$(( off + ${#pre} ))
+      sum=$(( sum + idx )); n=$(( n + 1 ))
+      off=$(( idx + 1 )); rest=${row:off}
+    done
+  done
+  if (( n )); then CAP_CX=$(( (sum + n / 2) / n ))
+  else
+    # no eyes on this frame (a closed face) — fall back to the body's own centre
+    # of mass, exactly as the gallery does
+    sum=0; n=0
+    for ((y=0; y<H; y++)); do
+      row=${ig[y]}
+      for ((x=0; x<W; x++)); do
+        [[ ${row:x:1} == "." ]] && continue
+        sum=$(( sum + x )); n=$(( n + 1 ))
+      done
+    done
+    (( n )) && CAP_CX=$(( (sum + n / 2) / n )) || CAP_CX=$(( W / 2 ))
+  fi
+  # the crown: the highest painted row in the centre columns
+  CAP_CROWN=$H
+  for ((x=CAP_CX-o3; x<=CAP_CX+o3; x++)); do
+    (( x < 0 || x >= W )) && continue
+    for ((y=0; y<H; y++)); do
+      [[ ${ig[y]:x:1} == "." ]] && continue
+      (( y < CAP_CROWN )) && CAP_CROWN=$y
+      break
+    done
+  done
+  (( CAP_CROWN >= H )) && CAP_CROWN=0
+  return 0
+}
+
+pix_apply_cap() { # nameref grid, cx, crown (from pix_cap_anchor)
+  local -n G=$1
+  local cx=$2 crown=$3
+  local W=${#G[0]} H=${#G[@]}
+  local xs=${PIX_XS:-1}
+  local domeRx=$(( 9 * xs / 2 )) o1=$(( xs / 2 )) o3=$(( 3 * xs / 2 ))
+  (( domeRx < 1 )) && domeRx=1
+  (( o1 < 1 )) && o1=1
+  local domeH=6
+  local y x
+
+  # grow the canvas: CAP_OT blank rows on top, body pushed down into them
+  local blank; printf -v blank '%*s' "$W" ""; blank=${blank// /.}
+  local -a out=()
+  for ((y=0; y<CAP_OT; y++)); do out+=("$blank"); done
+  out+=("${G[@]}")
+  local baseY=$(( crown + CAP_OT ))
+
+  # sp: stamp one pixel, bounds-checked (the gallery's sp())
+  local -a cap_rows=()
+  _capsp() { # x y char
+    local sx=$1 sy=$2 sc=$3
+    (( sx < 0 || sx >= W || sy < 0 || sy >= ${#out[@]} )) && return
+    out[sy]="${out[sy]:0:sx}${sc}${out[sy]:sx+1}"
+  }
+
+  # the dome, bottom row (k=1) to top (k=domeH)
+  local k w c yy
+  for ((k=1; k<=domeH; k++)); do
+    yy=$(( baseY - k ))
+    w=$(( CAP_DOME_W[k-1] * xs / 2 )); (( w < 1 )) && w=1
+    for ((x=cx-w; x<=cx+w; x++)); do
+      c=g
+      (( (x - cx) * 10 < -3 * w && k > 3 )) && c=y
+      (( k == domeH )) && c=y
+      (( (x - cx) * 20 > 9 * w && k < domeH - 1 )) && c=s
+      _capsp "$x" "$yy" "$c"
+    done
+  done
+  _capsp "$cx" "$(( baseY - domeH ))" w            # the button, dead centre on top
+  _capsp "$(( cx - o1 ))" "$(( baseY - 2 ))" h     # the ♥ badge: three pixels
+  _capsp "$(( cx + o1 ))" "$(( baseY - 2 ))" h
+  _capsp "$cx" "$(( baseY - 1 ))" h
+  # the brim: three rows, each narrower than the last
+  for ((x=cx-domeRx-o1; x<=cx+domeRx+o1; x++)); do _capsp "$x" "$baseY" b; done
+  for ((x=cx-domeRx+o1; x<=cx+domeRx-o1; x++)); do _capsp "$x" "$(( baseY + 1 ))" b; done
+  for ((x=cx-domeRx+o3; x<=cx+domeRx-o3; x++)); do _capsp "$x" "$(( baseY + 2 ))" s; done
+
+  # the outline: every clear pixel orthogonally touching the cap. Read from a
+  # snapshot so outlines never seed more outline (the gallery reads `src`).
+  local -a src=("${out[@]}")
+  local ny nx ch adj near
+  for ((y=0; y<${#out[@]}; y++)); do
+    # only rows touching the cap can grow outline — skip the rest of the sprite
+    near=0
+    [[ ${src[y]} == *[ygsbwh]* ]] && near=1
+    (( y > 0 )) && [[ ${src[y-1]} == *[ygsbwh]* ]] && near=1
+    (( y + 1 < ${#src[@]} )) && [[ ${src[y+1]} == *[ygsbwh]* ]] && near=1
+    (( near )) || continue
+    for ((x=0; x<W; x++)); do
+      [[ ${src[y]:x:1} == "." ]] || continue
+      adj=0
+      for ny in $((y-1)) $((y+1)); do
+        (( ny < 0 || ny >= ${#src[@]} )) && continue
+        ch=${src[ny]:x:1}; [[ $ch == [ygsbwh] ]] && adj=1
+      done
+      for nx in $((x-1)) $((x+1)); do
+        (( nx < 0 || nx >= W )) && continue
+        ch=${src[y]:nx:1}; [[ $ch == [ygsbwh] ]] && adj=1
+      done
+      (( adj )) && out[y]="${out[y]:0:x}o${out[y]:x+1}"
+    done
+  done
+  unset -f _capsp
+
+  # the topmost row the cap reaches — pix_render widens its window up to it
+  CAP_TOP=$(( baseY - domeH - 1 )); (( CAP_TOP < 0 )) && CAP_TOP=0
+  G=("${out[@]}")
+}
+
 # pix_render id frame blink → PIXOUT[] colored lines, PIXOUT_W cols, PIXOUT_H rows
 # (uses current PC palette; cache key includes it)
 declare -A PIXCACHE PIXCACHE_W PIXCACHE_H
@@ -1469,7 +1637,7 @@ pk_sgr() { # fg_rgb bg_rgb → the SGR prefix, in the current colour mode
 }
 
 pix_render() {
-  local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0} reading=${16:-} wave=${17:-0}
+  local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0} reading=${16:-} wave=${17:-0} cap=${18:-0}
   # ASCII-era frame names → pixel two-frame names
   case $frame in
     sick) frame=sick_1 ;; celebrate) frame=celebrate_1 ;;
@@ -1485,9 +1653,11 @@ pix_render() {
   (( wave != 0 )) && spear=0
   # the cocoon hides the chin too (the beard survives sleep — it's earned)
   [[ $frame == hibernate_* ]] && beard=0
+  # …and the cap with it: there is no head out there to wear it (§8.4)
+  [[ $frame == hibernate_* ]] && cap=0
   # dilation and brows are invisible behind elder spectacle rims
   [[ $specs == 1 ]] && bigeye=0 brows=0
-  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$wave/$PC_KEY/$PIX_MODE/$PIX_SCALE/$PIX_PACK"
+  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$wave/$cap/$PC_KEY/$PIX_MODE/$PIX_SCALE/$PIX_PACK"
   # A cache hit returns before PIXGRID is filled, so the badge backend must
   # never take one: the key has no PIX_CAPTURE in it, and a badge rendered
   # after a matching stage frame would silently capture an EMPTY grid. It only
@@ -1533,6 +1703,12 @@ pix_render() {
     # mirrors it for a facing render; after wag, before flip.
     pix_apply_wave g 1 "$wave"
   fi
+  if (( cap != 0 )) && pix_cap_anchor "$id" "$frame"; then
+    # the party cap goes on LAST: it grows the canvas, and every transform above
+    # (and every geometry mark below) is in pre-cap row coordinates. Before the
+    # flip, so a facing friend's cap mirrors with the head it sits on.
+    pix_apply_cap g "$CAP_CX" "$CAP_CROWN"
+  else cap=0; fi
   if (( flip )); then
     # mirror horizontally (compare view: the friend faces your pet) —
     # per-pixel letters, so reversing each row is the whole transform
@@ -1544,6 +1720,14 @@ pix_render() {
     done
   fi
   local trim r0 r1; trim=$(pix_trim "$id" "$frame"); r0=${trim%% *}; r1=${trim##* }
+  if (( cap != 0 )); then
+    # pix_trim measured the AUTHORED grid; the cap prepended CAP_OT rows, so the
+    # body — and the spear/wave/book marks widened against it below — all slid
+    # down by that much. Shift the window, then let the dome widen it upward.
+    r0=$(( r0 + CAP_OT )); r1=$(( r1 + CAP_OT ))
+    SPEAR_TOP=$(( ${SPEAR_TOP:-0} + CAP_OT )); SPEAR_BOT=$(( ${SPEAR_BOT:-0} + CAP_OT ))
+    WAVE_TOP=$(( ${WAVE_TOP:-0} + CAP_OT )); READ_BOTTOM=$(( ${READ_BOTTOM:-0} + CAP_OT ))
+  fi
   if (( spear != 0 )); then
     # the blade rises above the head and the butt + dust drop below the feet —
     # widen the window both ways (kept even top / odd bottom for half-blocks)
@@ -1559,6 +1743,12 @@ pix_render() {
     # the held book can hang below a short pet's feet — widen the window down
     # (kept odd for the half-block pairing) so the cover isn't sliced off
     r1=$READ_BOTTOM; (( r1 % 2 == 0 )) && r1=$(( r1 + 1 ))
+    (( r1 >= ${#g[@]} )) && r1=$(( ${#g[@]} - 1 ))
+  fi
+  if (( cap != 0 )); then
+    # the dome and its outline sit above the crown — widen the window up to them
+    # (kept even for the half-block pairing) so the cap isn't sliced off
+    (( CAP_TOP < r0 )) && { r0=$CAP_TOP; (( r0 % 2 )) && r0=$(( r0 - 1 )); (( r0 < 0 )) && r0=0; }
     (( r1 >= ${#g[@]} )) && r1=$(( ${#g[@]} - 1 ))
   fi
   if [[ ${gurney:-0} != 0 ]]; then
@@ -1764,8 +1954,8 @@ declare -a PIXH
 # is 4:1, and species stops reading — a raccoon and an otter in one language's
 # colour become the same yellow blob, leaving the beard as the only thing
 # telling two pets apart. The stage sizes it to the company instead (dense.sh).
-pix_render_half() { # species_id linguist_hex [frame] [beard] [cols=12] → PIXH[]
-  local id=$1 hex=$2 frame=${3:-idle_1} beard=${4:-0} tw=${5:-12}
+pix_render_half() { # species_id linguist_hex [frame] [beard] [cols=12] [cap] → PIXH[]
+  local id=$1 hex=$2 frame=${3:-idle_1} beard=${4:-0} tw=${5:-12} cap=${6:-0}
   (( tw < 4 )) && tw=4
   case $frame in
     sick) frame=sick_1 ;; celebrate) frame=celebrate_1 ;;
@@ -1773,11 +1963,15 @@ pix_render_half() { # species_id linguist_hex [frame] [beard] [cols=12] → PIXH
   esac
   [[ -n ${PIXF[$id/$frame]:-} ]] || frame=idle_1
   [[ $frame == hibernate_* ]] && beard=0   # the cocoon hides the chin
-  # the beard is the one transform that survives the shrink — it's earned, and
-  # a guest turning up must not shave the host (the rest of the expression is
-  # detail the 12-px downsample would smear anyway). Its shade is per-pet, so
-  # PIX_BEARD_RGB rides in the key too, or a visitor would wear the host's.
-  local ck="$id|$hex|$frame|$beard|${PIX_BEARD_RGB:-}|$PIX_MODE|$tw"
+  [[ $frame == hibernate_* ]] && cap=0     # …and the cap with it
+  # the beard and the cap are the transforms that survive the shrink — they are
+  # EARNED, and a guest turning up must not shave the host or knock its hat off
+  # (the rest of the expression is detail the 12-px downsample would smear
+  # anyway). This path renders the host at half scale too, so without the cap a
+  # perfect pet would lose its reward the moment company arrived. The beard's
+  # shade is per-pet, so PIX_BEARD_RGB rides in the key too, or a visitor would
+  # wear the host's.
+  local ck="$id|$hex|$frame|$beard|$cap|${PIX_BEARD_RGB:-}|$PIX_MODE|$tw"
   if [[ -n ${PIXHALFCACHE[$ck]:-} ]]; then
     local IFS=$'\n'; PIXH=(${PIXHALFCACHE[$ck]}); unset IFS
     return 0
@@ -1794,6 +1988,14 @@ pix_render_half() { # species_id linguist_hex [frame] [beard] [cols=12] → PIXH
     pix_apply_beard g "$beard"
   fi
   local trim r0 r1; trim=$(pix_trim "$id" "$frame"); r0=${trim%% *}; r1=${trim##* }
+  if (( cap != 0 )) && pix_cap_anchor "$id" "$frame"; then
+    # same canvas growth as pix_render: the cap prepends rows, so the authored
+    # window slides down with the body before the dome widens it back up
+    pix_apply_cap g "$CAP_CX" "$CAP_CROWN"
+    r0=$(( r0 + CAP_OT )); r1=$(( r1 + CAP_OT ))
+    (( CAP_TOP < r0 )) && { r0=$CAP_TOP; (( r0 < 0 )) && r0=0; }
+    (( r1 >= ${#g[@]} )) && r1=$(( ${#g[@]} - 1 ))
+  fi
   local h=$(( r1 - r0 + 1 ))
   (( h < 2 )) && { r0=0; h=${#g[@]}; (( h < 1 )) && h=18; r1=$(( h - 1 )); }
   local th=$(( (h + 1) / 2 )); (( th % 2 )) && th=$(( th + 1 ))

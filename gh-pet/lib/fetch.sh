@@ -123,13 +123,36 @@ gql_calendar() { # login ttl
     local age=$(( $(date +%s) - $(mtime "$body") ))
     (( age < ttl )) && return 0
   fi
-  local q='query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{date contributionCount}}}}}}'
-  local payload; payload=$(jq -n --arg q "$q" --arg l "$login" '{query:$q, variables:{login:$l}}')
+  # A GraphQL failure is HTTP 200 with `data.user: null` + errors[], so the test
+  # for "did this work" has to be the CALENDAR, not `.data` — that only checked
+  # the envelope, and happily cached an error body, which then read as a real
+  # calendar full of zeroes (a 2013 account came out a hatchling with fitness 0).
   local tmp="$dir/.calendar.tmp"
-  if curl -sS --max-time 15 -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-      -d "$payload" -o "$tmp" "$API/graphql" 2>/dev/null && jq -e '.data' "$tmp" >/dev/null 2>&1; then
-    mv "$tmp" "$body"
-  else rm -f "$tmp"; fi
+  _cal_try() { # query_json → 0 if the response carries an actual calendar
+    curl -sS --max-time 15 -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+      -d "$1" -o "$tmp" "$API/graphql" 2>/dev/null || return 1
+    jq -e '.data.user.contributionsCollection.contributionCalendar' "$tmp" >/dev/null 2>&1
+  }
+  local q='query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{date contributionCount}}}}}}'
+  if _cal_try "$(jq -n --arg q "$q" --arg l "$login" '{query:$q, variables:{login:$l}}')"; then
+    mv "$tmp" "$body"; unset -f _cal_try; return 0
+  fi
+  # Busy accounts (canac, 13 years and thousands of contributions) get
+  # RESOURCE_LIMITS_EXCEEDED on `weeks` — GitHub refuses to walk a whole year of
+  # them, forever, so this is not a retry-and-hope case. Ask again from a 90-day
+  # mark: same shape, and it answers. `from` alone spans from→+1y (the tail is
+  # future zeros), so the last 21 days for fitness and 60 for the graph are all
+  # present; totalContributions then counts 90 days rather than a year, which
+  # reads a heavy account LOWER than a light one whose full query worked. It
+  # still clears the stage thresholds by a mile, and losing 90 days of history
+  # beats reporting zero.
+  local from; from=$(date -u -v-90d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '90 days ago' +%Y-%m-%dT%H:%M:%SZ)
+  local qw='query($login:String!,$from:DateTime!){user(login:$login){contributionsCollection(from:$from){contributionCalendar{totalContributions weeks{contributionDays{date contributionCount}}}}}}'
+  if _cal_try "$(jq -n --arg q "$qw" --arg l "$login" --arg f "$from" '{query:$q, variables:{login:$l, from:$f}}')"; then
+    mv "$tmp" "$body"; unset -f _cal_try; return 0
+  fi
+  # nothing usable — leave no file, so stats.jq takes the events approximation
+  rm -f "$tmp"; unset -f _cal_try
 }
 
 # ── achievements scrape (plan.md §4) — isolated, defensive, never fatal ─────

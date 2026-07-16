@@ -2,7 +2,7 @@
 # glyph tiers, ANSI-256 color math, linguist colors, seed derivation, name generator.
 # Everything here is a pure function of its inputs (plan.md §1).
 
-VERSION="2.0.0"
+VERSION="2.1.0"
 
 die() { printf 'gh-pet: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -89,6 +89,7 @@ C_INK=$'\e[39m'
 C_VOICE=$(fg 250)$'\e[3m'   # pet-voice line: 250, italic
 C_TRACK=$(fg 238)    # empty bar track
 C_RED=$(fg 196) C_AMBER=$(fg 214) C_GREEN=$(fg 77)
+C_GREEN_HI=$(fg 83)  # C_GREEN's brighter twin — the perfect-100 bar pulses to it
 C_HEARTS=$(fg 204)   # happiness hearts, soft red
 C_MAILC=$(fg 221)    # mail envelope — attention without alarm
 C_SCROLLC=$(fg 45)   # review scroll — "work" color

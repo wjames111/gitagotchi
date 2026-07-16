@@ -19,7 +19,17 @@
 | (($starred // [])       | .[0] // [])    as $ST
 | (($stale // [])         | .[0] // [])    as $SI
 | (($alerts // [])        | .[0])          as $AL
-| (($calendar // [])      | .[0])          as $CAL
+# A failed GraphQL call is still HTTP 200: the body carries `data.user: null`
+# plus an errors[] — big accounts trip RESOURCE_LIMITS_EXCEEDED asking for a
+# year of weeks — and the cache stores it like any other payload. Every $CAL
+# consumer below tests `$CAL != null`, which an error body passes, so it took
+# the authed path and read zeroes out of a null user: fitness 0, contrib 0, an
+# empty graph, and a 2013 account reported as a HATCHLING. A calendar with no
+# calendar in it is ABSENT — fall back to the events approximation, which is
+# what an unauthenticated view uses and is honest about being one.
+| (($calendar // []) | .[0]) as $CAL_RAW
+| (if ($CAL_RAW | .data.user.contributionsCollection.contributionCalendar) != null
+   then $CAL_RAW else null end)              as $CAL
 | (($notifications // []) | .[0])          as $NT
 | (($medals // [])        | .[0] // {ok:false, medals:[]}) as $MD
 | (($orgs // [])          | .[0] // [])    as $OG
@@ -80,9 +90,15 @@
 | ($rate14 / (if $baseline < 0.1 then 0.1 else $baseline end)) as $ratio
 
 # 2 — energy: rested by quiet gaps, drained by sustained >1.75× pace (plan.md §3)
-| ((if $has_gap == 1 then 58 else 30 end)
-   + (8 * ([$rest_gaps - 1, 0] | max | [., 2] | min))
-   + (if $rate14 < ($baseline * 0.6) then 12 else 0 end)
+# The terms are sized to REACH 100 on rest alone (70 + 30): a stat that tops out
+# below its own scale silently caps happiness for every pet, since the composite
+# is a weighted average — these summed to 86 and made a perfect pet impossible.
+# The coasting bonus must NOT be load-bearing for 100: it pays for working below
+# your own baseline, which is precisely what a pet with full hunger and social
+# cannot be doing, so hanging the ceiling on it would just move the deadlock.
+| ((if $has_gap == 1 then 70 else 30 end)
+   + (15 * ([$rest_gaps - 1, 0] | max | [., 2] | min))
+   + (if $rate14 < ($baseline * 0.6) then 10 else 0 end)
    - ((($ratio - 1.75) * 35) | clamp(0; 70))
   | clamp(0; 100) | round) as $energy
 
@@ -111,11 +127,14 @@
 
 # 3 — mood: net social feedback last 7d, squashed into 5 buckets (plan.md §3)
 | (($AP.total_count // 0) + $merges7 - 2 * ($CR.total_count // 0)) as $mood_raw
+# evenly spaced 22 apart, ecstatic at a true 100 — the old top bucket was 92,
+# which (at weight 0.24) alone put a ~2-point ceiling on every pet's happiness.
+# miserable stays 12: the misery cap keys on mood < 20 and must still trip.
 | (if $mood_raw <= -3 then {v: 12, b: "miserable"}
-   elif $mood_raw < 0  then {v: 32, b: "grumpy"}
-   elif $mood_raw <= 8 then {v: 52, b: "neutral"}
-   elif $mood_raw <= 24 then {v: 72, b: "content"}
-   else {v: 92, b: "ecstatic"} end) as $mood
+   elif $mood_raw < 0  then {v: 34, b: "grumpy"}
+   elif $mood_raw <= 8 then {v: 56, b: "neutral"}
+   elif $mood_raw <= 24 then {v: 78, b: "content"}
+   else {v: 100, b: "ecstatic"} end) as $mood
 
 # 4 — fitness: active days of last 21 (calendar when authed, events otherwise)
 | (if $CAL != null
@@ -164,7 +183,10 @@
              or .type == "PullRequestReviewCommentEvent" or .type == "CommitCommentEvent")
     | select(dago(.created_at) < 7)
     | select((.repo.name // "" | ascii_downcase) | startswith($me + "/") | not) ] | length) as $outbound7
-| ((7 * ($outbound7 | sqrt) + ([($FW | length), 20] | min)) | clamp(0; 100) | round) as $social
+# 12·√n puts full marks at ~44 outbound comments a week (a busy maintainer's
+# week) rather than the ~131 the old 7·√n demanded — nobody reached that, so
+# social's true ceiling sat under 100 and held the whole composite down.
+| ((12 * ($outbound7 | sqrt) + ([($FW | length), 20] | min)) | clamp(0; 100) | round) as $social
 # visitors: whoever you've interacted with in the LAST HOUR — their pets
 # drop by on the stage (owners of repos you commented/reviewed on).
 # You are never your own guest: the repo filter is only a proxy for that, so the
@@ -193,7 +215,10 @@
 
 # 8 — wisdom: reviews given + language diversity + account age; slow log-scale
 | ($RB.total_count // 0) as $reviews_total
-| ((7 * ((1 + $reviews_total) | log) + 3 * ([$nlangs, 8] | min) + 1.5 * ($acct_days / 365))
+# full marks are set where a venerable reviewer actually lands — ~300 reviews,
+# 8 languages, a decade of account — not the ~2000 reviews the old coefficients
+# needed, which put wisdom's real ceiling under 100 and capped the composite.
+| ((9 * ((1 + $reviews_total) | log) + 4 * ([$nlangs, 8] | min) + 2 * ($acct_days / 365))
    | clamp(0; 100) | round) as $wisdom
 
 # 9 — health (self only, needs auth): Dependabot alerts (plan.md §3)

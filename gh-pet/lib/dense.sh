@@ -119,7 +119,13 @@ screen_overlay() { # row col colored_glyph [display_width]
       fi
     fi
     if (( vis == col )); then
-      out+=$'\e[0m'"${g}"$'\e[0m'
+      # NO reset before the glyph. `state` is the SGR the cell underneath is
+      # already painted in, and in quad packing that includes a BACKGROUND (two
+      # half-blocks share a cell) — resetting here punched the pet's own colour
+      # out from under every heart and star the z-layer dropped on it, so they
+      # read as black tiles with a glyph in them. Leaving state alone lets the
+      # glyph sit on whatever is behind it; it brings its own foreground.
+      out+="${g}"$'\e[0m'
       # consume gw underlying columns (a 2-col emoji eats two), keeping any
       # color state and hyperlink sequences they carried
       local left=$gw
@@ -232,9 +238,13 @@ dgrad_colors() { # cells → space-joined "r;g;b" per cell
   fi
   printf '%s' "${DGRAD_CACHE[$1]}"
 }
-dmeter() { # value cells frozen → DM (visible width = cells)
-  local v=$1 n=$2 fro=${3:-0}
-  local ck="$v|$n|$fro"
+dmeter() { # value cells frozen pulse → DM (visible width = cells)
+  # pul: 0 = the normal ramp · 1 = solid green · 2 = solid bright green. A
+  # perfect 100 alternates 1↔2, so the bar reads as ALL green and blinks — the
+  # ramp's red shoulder has no business on a pet that has everything. It rides
+  # the cache key rather than a live color, so both phases memoize like any bar.
+  local v=$1 n=$2 fro=${3:-0} pul=${4:-0}
+  local ck="$v|$n|$fro|$pul"
   if [[ -n ${DMETER_CACHE[$ck]:-} ]]; then DM=${DMETER_CACHE[$ck]}; return; fi
   local -a cols=($(dgrad_colors "$n"))
   local i out=""
@@ -244,6 +254,8 @@ dmeter() { # value cells frozen → DM (visible width = cells)
     if (( v * n > i * 100 )); then
       # hibernation freezes bars ice-blue (ux-spec §9 state treatments)
       if (( fro )); then fgt_v "$RGB_ICE"
+      elif (( pul == 2 )); then fgt_v "$RGB_ACT"
+      elif (( pul == 1 )); then fgt_v "$RGB_GREEN"
       else fgt_v "${cols[i]}"; fi
     else fgt_v "$RGB_TRACK"; fi
     out+="${FGT}▆"
@@ -748,7 +760,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
     (( CAMEO_W % 2 )) && CAMEO_W=$(( CAMEO_W - 1 ))
   fi
   if (( hosting )) && \
-     pix_render_half "${P[SPECIES]}" "${P[COLOR_HEX]:-#dea584}" "$ANIM_FRAME" "${PET_BEARD:-0}" "$CAMEO_W"; then
+     pix_render_half "${P[SPECIES]}" "${P[COLOR_HEX]:-#dea584}" "$ANIM_FRAME" "${PET_BEARD:-0}" "$CAMEO_W" "${PET_CAP:-0}"; then
     PET_LINES=("${PIXH[@]}"); PET_W=$CAMEO_W; PET_H=${#PIXH[@]}
   fi
   local petx=$(( pix0 + (piw - PET_W) / 2 + PET_XOFF ))
@@ -766,16 +778,37 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   PET_XMAX=$(( pxmax - pix0 - (piw - PET_W) / 2 ))
   # feet stay on the ground; in a short panel the top of the sprite clips
   local pet_top=$(( ground - PET_H )) i skip=0
-  GLEE_TX=$(( petx + PET_W / 2 ))          # the glee flies to the pet's mouth
-  GLEE_TY=$(( pet_top + PET_H / 2 ))
-  GLEE_HX=$GLEE_TX GLEE_HY=$(( pet_top + 1 ))   # …and the halo rings the head
-  if (( pet_top < stage_top )); then skip=$(( stage_top - pet_top )); pet_top=$stage_top; fi
-  for ((i=skip; i<PET_H; i++)); do
-    local prr=$(( pet_top + i - skip ))
-    (( prr >= ground )) && break
-    scr_put "$prr" "$petx" "$PET_W" "${PET_LINES[i]}"
-  done
-  SCN_OBST+=("$petx $((petx + PET_W - 1)) $pet_top $((ground - 1))")
+  # The bliss float leaves the stage. Past t=0 the pet is lerped from home to the
+  # middle of the SCREEN and drawn by the z-layer pass instead, so it crosses the
+  # panels rather than being clipped inside this one. The sprite is copied into
+  # BLISS_* because the friends and visitor renders below reuse PET_LINES/W/H —
+  # by the time the z-layer runs, this pet's grid is long gone.
+  local bt=${BLISS_T:-0}
+  local fx=$petx fy=$pet_top
+  if (( bt > 0 )); then
+    local tx=$(( (COLS - PET_W) / 2 ))
+    local ty=$(( (LINES - PET_H) / 2 + (TICK / 8) % 2 ))   # the bob, once arrived
+    fx=$(( petx + (tx - petx) * bt / 100 ))
+    fy=$(( pet_top + (ty - pet_top) * bt / 100 ))
+    BLISS_LINES=("${PET_LINES[@]}"); BLISS_W=$PET_W; BLISS_H=$PET_H
+    BLISS_FX=$fx BLISS_FY=$fy
+  else
+    BLISS_FX="" BLISS_FY=""
+  fi
+  GLEE_TX=$(( fx + PET_W / 2 ))          # the glee flies to the pet's mouth
+  GLEE_TY=$(( fy + PET_H / 2 ))
+  GLEE_HX=$GLEE_TX GLEE_HY=$(( fy + 1 ))   # …and the halo rings the head
+  if (( bt == 0 )); then
+    if (( pet_top < stage_top )); then skip=$(( stage_top - pet_top )); pet_top=$stage_top; fi
+    for ((i=skip; i<PET_H; i++)); do
+      local prr=$(( pet_top + i - skip ))
+      (( prr >= ground )) && break
+      scr_put "$prr" "$petx" "$PET_W" "${PET_LINES[i]}"
+    done
+    # airborne, it is no longer scenery: floaters and props route around the
+    # sprite's cells, and there is nothing on the stage left to route around
+    SCN_OBST+=("$petx $((petx + PET_W - 1)) $pet_top $((ground - 1))")
+  fi
   # toy ball (curiosity ≥ 60) and flies (§5.3 vignettes carry over)
   if [[ $VIG_CUR == ball ]] && (( GATE_PROPS )); then
     local bx=$(( petx - 5 - ((TICK / 6) % 2) * 2 ))
@@ -865,8 +898,11 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
         beard_tier "${VPQ[WISDOM]:-0}"
         local vbeard=$BEARD_TIER
         (( GATE_BEARD )) || vbeard=0
+        # a guest that earned the cap arrives wearing it — same gate as its beard
+        local vcap=0
+        (( ${VPQ[HAPPINESS]:-0} >= 100 && GATE_BEARD )) && vcap=1
         PIX_BEARD_RGB=${VPQ[BEARD_RGB]:-}
-        if pix_render_half "${VPQ[SPECIES]}" "${VPQ[COLOR_HEX]:-#dea584}" "$vframe" "$vbeard" "$CAMEO_W"; then
+        if pix_render_half "${VPQ[SPECIES]}" "${VPQ[COLOR_HEX]:-#dea584}" "$vframe" "$vbeard" "$CAMEO_W" "$vcap"; then
           local vw=$CAMEO_W vh=${#PIXH[@]}
           local vpx=-1
           if (( vrcur + vw <= pw - 2 )); then
@@ -1200,6 +1236,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   local -a vnames=(happiness hunger energy mood fitness clean curiosity social wisdom health)
   local dsel=${DSEL:--1}
   local vr=$((pv_top + 1)) k
+  HBAR_ROW=""   # cleared every frame: the stars must never chase a stale bar
   for k in "${!vkeys[@]}"; do
     # the inspector line reserves the capnote row while it's active
     (( vr >= pv_top + pv_h - 1 - (dsel >= 0 ? 1 : 0) )) && break
@@ -1239,7 +1276,14 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       row+="${FA}─ private · by design${RS}"
       rlen=$(( lab_w + sw + 21 ))
     else
-      dmeter "${v:-0}" "$cells" "$frozen"
+      # happiness alone celebrates a perfect 100: the bar goes all-green and
+      # blinks, and the z-layer throws stars off it (HBAR_* is where it landed)
+      local pul=0
+      if (( k == 0 && ${v:-0} >= 100 )); then
+        pul=$(( 1 + (TICK / 2) % 2 ))
+        HBAR_ROW=$vr HBAR_X=$(( vx + lab_w + sw )) HBAR_W=$cells
+      fi
+      dmeter "${v:-0}" "$cells" "$frozen" "$pul"
       row+="$DM $(dval "${v:-0}" "$frozen")"
       rlen=$(( lab_w + sw + cells + 1 + 3 + frozen ))
     fi
@@ -1525,17 +1569,49 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       screen_overlay "$grow" "$gx2" "${gcol}${gch}" "$gw2"
     done
   fi
+  # …and stars come off the happiness bar. They run the length of the meter and
+  # twinkle out at the end, lifting a row clear of it wherever there is headroom
+  # — in the dense column happiness is the panel's TOP row, so usually there is
+  # none and they glint along the bar itself. Phases derive from TICK alone: no
+  # RNG, because a snapshot has to render identically twice.
+  if [[ -n ${HBAR_ROW:-} ]] && (( ${HBAR_W:-0} > 0 )); then
+    local sj
+    for sj in 0 1 2; do
+      local sph=$(( (TICK / 2 + sj * 5) % (HBAR_W + 4) ))
+      (( sph >= HBAR_W )) && continue            # ran off the end — twinkled out
+      local srr=$HBAR_ROW scc=$(( HBAR_X + sph ))
+      (( sph > HBAR_W - 3 && HBAR_ROW > 1 )) && srr=$(( HBAR_ROW - 1 ))
+      (( srr < 1 || srr >= LINES - 1 )) && continue
+      (( scc < 1 || scc > COLS - 2 )) && continue
+      screen_overlay "$srr" "$scc" "$(fgt "$RGB_YELLOW")${G_SPARK}${RS}"
+    done
+  fi
+  # the bliss float: the pet itself rides the z-layer to the middle of the screen,
+  # over every panel — drawn before the hearts so the halo still rings its head
+  if [[ $self == 1 && -n ${BLISS_FX:-} ]]; then
+    local zi
+    for ((zi=0; zi<BLISS_H; zi++)); do
+      local zr=$(( BLISS_FY + zi ))
+      (( zr < 1 || zr >= LINES - 1 )) && continue
+      (( BLISS_FX < 1 || BLISS_FX + BLISS_W > COLS - 1 )) && continue
+      screen_overlay "$zr" "$BLISS_FX" "${BLISS_LINES[zi]}" "$BLISS_W"
+    done
+  fi
   # a perfect 100: three hearts swirl around the pet's head on the z-layer
   if (( ${P[HAPPINESS]:-0} >= 100 )) && [[ $ANIM_STATE == idle || $ANIM_STATE == celebrate || $ANIM_STATE == eat ]]; then
     local -a odx=(6 5 3 0 -3 -5 -6 -5 -3 0 3 5)
     local -a ody=(0 1 2 2 2 1 0 -1 -2 -2 -2 -1)
+    # once airborne the pet is off the stage, so the hearts follow it over the
+    # panels; grounded, they stay penned inside the stage as before
+    local hlo=$pv_top hhi=$ground hcl=1 hch=$(( pw - 2 ))
+    if [[ -n ${BLISS_FX:-} ]]; then hlo=0 hhi=$(( LINES - 1 )) hcl=1 hch=$(( COLS - 2 )); fi
     local hi2
     for hi2 in 0 1 2; do
       local hph=$(( (TICK / 2 + hi2 * 4) % 12 ))
       local hrr=$(( GLEE_HY + ody[hph] ))
       local hcc=$(( GLEE_HX + odx[hph] ))
-      (( hrr <= pv_top || hrr >= ground )) && continue
-      (( hcc < 1 || hcc > pw - 2 )) && continue
+      (( hrr <= hlo || hrr >= hhi )) && continue
+      (( hcc < hcl || hcc > hch )) && continue
       screen_overlay "$hrr" "$hcc" "${C_HEARTS}${G_HEART_FLOAT}"
     done
   fi

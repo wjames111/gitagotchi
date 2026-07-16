@@ -94,6 +94,8 @@ area on screen is the pet itself — bars are thin, chrome is gray.
 | Idle frame swap | every 2–3 ticks, ±1 tick jitter (session-local RNG) |
 | Blink | face swaps to closed-eyes for 1 tick, randomly every 3–8 s |
 | Wander | ±4 columns from home column, 1 col/tick, ~20% chance to start per 5 s; never during eat/sick/hibernate |
+| Bliss float | happiness 100 only: wander stops, pet drifts home to the centre 1 col/tick, then leaves the stage entirely — lerped to the middle of the **screen** over 13 ticks (`BLISS_T` 0→100, +8/tick) and drawn on the z-layer **above every panel**, bobbing 1 row every 8 ticks once arrived. The three-heart halo follows its head, unpenned from the stage. Idle only — a host stands at the stage edge for its guests, and every other state is busy somewhere specific. Leaving 100 (or any state change) brings it home the same way it left. Cozy has no z-layer, so there the float lerps to the middle of its own stage |
+| Bliss bar | happiness 100 only: the meter drops the red→green ramp and goes **all green**, blinking between the two greens on a 2-tick beat, with 3 gold `✦` running the length of it and twinkling out at the end (they lift a row clear of the bar where there's headroom; in the dense column happiness is the panel's top row, so usually there isn't) |
 | Eating sequence | 12 ticks (3 s), locks all other motion, ends with `+N` float |
 | Float-ups (hearts, `+N`, `zZz`) | 1 row/tick, spawn at pet, expire at stage top |
 | Celebrate burst | 8 ticks of confetti chars `* · ✦` falling 1 row/tick |
