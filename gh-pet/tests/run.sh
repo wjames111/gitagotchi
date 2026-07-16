@@ -54,6 +54,25 @@ assert_contains "$SNAP2" "Lonisux" "name generator frozen: id 3151702 → Lonisu
 
 echo "· misery cap (plan.md §3.1): starving pet cannot be happy"
 rm -rf "$XDG_CACHE_HOME/gitagotchi"
+# The cap only BINDS — and only says so — when the raw composite would clear 60,
+# so the fixture has to be an elite pet with an empty belly. That premise is worth
+# asserting on its own: if a reweight drags raw under 60 the pet is honestly
+# miserable without the cap, the insight below vanishes, and the assert_contains
+# alone would just report a missing string. Check the premise first so the failure
+# names the cause.
+_sargs=(-r --arg now "$(date +%s)" --arg login octotest)
+for _f in user repos events merged approved changesreq reviewedby starred stale \
+          alerts calendar notifications medals orgs following; do
+  if [[ -s fixtures-starving/$_f.json ]]; then _sargs+=(--slurpfile "$_f" "fixtures-starving/$_f.json")
+  else _sargs+=(--argjson "$_f" null); fi
+done
+RAWS=$(jq -n "${_sargs[@]}" -f "$ROOT/lib/stats.jq" 2>/dev/null \
+       | sed -n "s/^HAPPY_RAW='\([0-9]*\)'.*/\1/p")
+if [[ $RAWS =~ ^[0-9]+$ ]] && (( RAWS > 60 )); then
+  ok "starving fixture still exercises the cap (raw $RAWS > 60)"
+else
+  fail "starving fixture no longer binds the cap (raw=${RAWS:-none}) — the cap tests below are testing nothing; make the pet elite again or move the cap test to a low-weight survival stat (see make_fixtures.sh)"
+fi
 SNAP3=$("$ROOT/gh-pet" --fixtures fixtures-starving --snapshot --cozy 2>&1)
 assert_contains "$SNAP3" "happiness capped at 60" "insight explains the cap"
 HVAL=$(awk '/happiness/{for(i=NF;i>0;i--) if($i ~ /^[0-9]+$/){print $i; exit}}' <<<"$SNAP3")
