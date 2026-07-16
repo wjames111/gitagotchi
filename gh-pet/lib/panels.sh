@@ -1253,14 +1253,22 @@ draw_friends_x() {
       local pk
       local ppitch=1
       (( ph - pr >= 2 * ${#pkeys[@]} + 6 )) && ppitch=2   # breathing room
+      # the label column fits the LONGEST name plus a space, measured — a flat
+      # %-8s pads but never truncates, so "curiosity" (9) ran into its own meter
+      # and made the row a column wider than the length scr_put was handed. The
+      # +1 is the gap: fitting exactly would still leave the longest label
+      # touching its bar. Derived, so a future stat can't reintroduce either.
+      local plw=0 pn
+      for pn in "${pnames[@]}"; do (( ${#pn} > plw )) && plw=${#pn}; done
+      plw=$(( plw + 1 ))
       for pk in "${!pkeys[@]}"; do
         (( pr >= ph - 3 )) && break
         local pv2=${PV[${pkeys[pk]}]:-0}
         dmeter "$pv2" 8 "$frz"
-        local prpad=$(( piw - 2 - 8 - 8 - 3 - frz ))
+        local prpad=$(( piw - 2 - plw - 8 - 3 - frz ))
         (( prpad < 1 )) && prpad=1
-        scr_put "$pr" $((px0 + 1)) $(( 8 + 8 + prpad + 3 + frz )) \
-          "${MU}$(printf '%-8s' "${pnames[pk]}")${RS}${DM}$(repeat_str " " "$prpad")$(dval "$pv2" "$frz")"
+        scr_put "$pr" $((px0 + 1)) $(( plw + 8 + prpad + 3 + frz )) \
+          "${MU}$(printf "%-${plw}s" "${pnames[pk]}")${RS}${DM}$(repeat_str " " "$prpad")$(dval "$pv2" "$frz")"
         pr=$((pr + ppitch))
       done
       # medal chips in their own colors, then the privacy stance
