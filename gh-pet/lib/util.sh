@@ -185,31 +185,73 @@ hsl_rgb() { # h 0-359 · s 0-100 · l 0-100
                     $(( (b + m) * 255 / 1000 ))
 }
 
+# rgb → hue 0-359, or -1 for an achromatic shade (the grey coats: C #555555,
+# Crystal #000100). Integer math, same reason as hsl_rgb.
+rgb_hue() { # "r;g;b"
+  # split the declarations — `local rest=… g=${rest…}` expands rest BEFORE it is
+  # assigned (the trap this codebase keeps re-learning; moonlit above splits for
+  # the same reason). Under set -u it errored and silently returned a junk hue.
+  local rgb=$1
+  local r=${rgb%%;*} rest=${rgb#*;}
+  local g=${rest%%;*}
+  local b=${rest#*;}
+  local mx=$r mn=$r
+  (( g > mx )) && mx=$g; (( b > mx )) && mx=$b
+  (( g < mn )) && mn=$g; (( b < mn )) && mn=$b
+  local d=$(( mx - mn ))
+  (( d < 12 )) && { printf -- '-1'; return; }   # too little chroma to have a hue
+  local h
+  if   (( mx == r )); then h=$(( (60 * (g - b) / d + 360) % 360 ))
+  elif (( mx == g )); then h=$(( 60 * (b - r) / d + 120 ))
+  else                     h=$(( 60 * (r - g) / d + 240 )); fi
+  printf '%s' $(( (h + 360) % 360 ))
+}
+
 # beard shade (plan.md §2): an identity trait, sha256 of the account's CREATED
-# timestamp AND its numeric id — both immutable, so the beard never changes
-# color. The id is what makes it UNIQUE: created_at alone collides (two
-# accounts signing up the same second share a beard), and stats.jq substitutes
-# one CONSTANT date whenever user.json hasn't landed, which dyed every such pet
-# the same shade — the bug this replaced.
+# timestamp AND its numeric id. The id is what makes it UNIQUE: created_at alone
+# collides (two accounts signing up the same second share a beard), and stats.jq
+# substitutes one CONSTANT date whenever user.json hasn't landed, which dyed
+# every such pet the same shade.
 #
 # The hue is the FULL circle, not a natural-hair gamut: this is dyed hair, not
-# greying. The old table quantized to ten shades, of which silver/snow/ash all
+# greying. The old version quantized to ten shades, of which silver/snow/ash all
 # read as one pale grey and chestnut/dark-brown/black as one near-black — four
 # perceptual families, so any four pets on a stage were a coin flip to wear the
-# same beard (they did: wjames111 and canac both hashed to chestnut). Continuous
-# hue × 31 saturations × 23 lightnesses ≈ 257k shades — twins effectively gone.
+# same beard (they did: wjames111 and canac both hashed to chestnut).
+#
+# ██ The hue is an OFFSET FROM THE COAT, never an absolute. ██ A free-running
+# hue eventually lands on the pet's own color and the beard disappears into the
+# face: canac's blue hamster wore a blue beard at a redmean distance of 31 —
+# invisible. So identity picks a rotation of 90°–270° AWAY from the coat's hue,
+# which cannot land within 90° of it. The coat's hue is the LINGUIST hue: the
+# pelt is the species palette hue-shifted onto it, and the rendered O comes out
+# within 1° of the language's own hue on all 50 species (measured), so the hex
+# is a faithful stand-in for what actually gets drawn. An achromatic coat (C's
+# #555555) has no hue to run from — a saturated beard already contrasts with
+# grey — so identity takes the whole circle there.
+#
+# THE TRADE: the beard now moves if your TOP LANGUAGE changes. It cannot both
+# be immutable and be guaranteed to contrast a coat that itself changes color —
+# contrast has to depend on the coat. The RELATIONSHIP is the immutable part:
+# your rotation away from your coat is yours forever.
+#
 # Saturation floors at 55 so no shade washes out to grey; lightness stays in
 # 40-62 so it survives BOTH the ×0.45 faint dim and the night moonlit() pass.
 #
 # ██ PINNED, like gen_name — nothing is stored, so a pet's beard exists ONLY as
 # this mapping. Any edit here re-dyes every beard in the wild. Version it,
 # don't tune it in place.
-beard_color_for() { # $1 = CREATED iso timestamp · $2 = numeric user id
+beard_color_for() { # $1 = CREATED iso · $2 = numeric user id · $3 = coat hex
   local src="$1:${2:-0}" hex
   if have shasum; then hex=$(printf '%s' "$src" | shasum -a 256 | cut -d' ' -f1)
   else hex=$(printf '%s' "$src" | sha256sum | cut -d' ' -f1); fi
-  hsl_rgb $(( 16#${hex:0:4} % 360 )) $(( 55 + 16#${hex:4:2} % 31 )) \
-          $(( 40 + 16#${hex:6:2} % 23 ))
+  local coat=${3#\#} coathue=-1
+  [[ $coat =~ ^[0-9A-Fa-f]{6}$ ]] && \
+    coathue=$(rgb_hue "$((16#${coat:0:2}));$((16#${coat:2:2}));$((16#${coat:4:2}))")
+  local hue
+  if (( coathue < 0 )); then hue=$(( 16#${hex:0:4} % 360 ))
+  else hue=$(( (coathue + 90 + 16#${hex:0:4} % 181) % 360 )); fi
+  hsl_rgb "$hue" $(( 55 + 16#${hex:4:2} % 31 )) $(( 40 + 16#${hex:6:2} % 23 ))
 }
 
 # name generator (plan.md §2.1) — a pet's name should sound like something you

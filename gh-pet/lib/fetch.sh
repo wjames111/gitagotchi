@@ -55,6 +55,11 @@ net_fail() {
 # gapi login name ttl url [accept] — fetch into $CACHE_ROOT/$login/$name.json
 gapi() {
   local login=$1 name=$2 ttl=$3 url=$4 accept=${5:-application/vnd.github+json}
+  # An empty login collapses $CACHE_ROOT/$login to $CACHE_ROOT/ and scatters
+  # api json across the cache root instead of into a pet's directory — which is
+  # where the stray alerts.json/stale.json at the top level came from. Every
+  # write below is keyed off $dir, so refuse once, here.
+  [[ -n $login ]] || return 1
   local dir="$CACHE_ROOT/$login"; mkdir -p "$dir"
   local body="$dir/$name.json" etagf="$dir/$name.etag"
 
