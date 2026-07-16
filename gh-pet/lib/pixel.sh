@@ -18,7 +18,12 @@ declare -a PIX_SPECIES=()
 declare -A PIXF PIXPAL PIXREF PIXTRIM PIX_HASFRAME PIXNAME
 
 pix_detect_mode() {
-  if [[ ${OPT_ASCII:-0} == 1 ]]; then PIX_MODE=""; return; fi
+  # ASCII sprites are the LAST resort, never a default: pixel art is what you
+  # get unless you opt out with --ascii or the terminal genuinely can't show
+  # color at all. A bare TERM=xterm reports only 8 colors via tput but renders
+  # 256-color escapes fine, so "< 256 colors" must NOT mean "fall back to ASCII"
+  # — that was demoting capable terminals. Prefer pixel whenever in doubt.
+  if [[ ${OPT_ASCII:-0} == 1 ]]; then PIX_MODE=""; return; fi   # explicit opt-out
   case "${COLORTERM:-}" in
     *truecolor*|*24bit*) PIX_MODE=T; return ;;
   esac
@@ -29,8 +34,11 @@ pix_detect_mode() {
   case "${TERM:-}" in
     *-direct|*truecolor*|xterm-kitty|iterm2*|alacritty|wezterm|foot*|ghostty*) PIX_MODE=T; return ;;
   esac
-  local n; n=$(tput colors 2>/dev/null || echo 8)
-  if (( n >= 256 )); then PIX_MODE=256; else PIX_MODE=""; fi
+  # the ONLY automatic fall to ASCII: a terminal with no color at all
+  # (TERM unset/dumb, or tput certain there are fewer than 8 colors).
+  case "${TERM:-dumb}" in ""|dumb) PIX_MODE=""; return ;; esac
+  local n; n=$(tput colors 2>/dev/null || echo 256)
+  if (( n < 8 )); then PIX_MODE=""; else PIX_MODE=256; fi
 }
 
 # locate the grid file: project override → bundled copy
@@ -1080,6 +1088,64 @@ pix_apply_spear() { # nameref grid, side (1 right / -1 left), tap (0/1)
   SPEAR_TOP=$(( tipY + dy )); SPEAR_BOT=$(( groundY + 2 ))
 }
 
+# the goodbye wave (§5.9, gitagotchi-goodbye_1.html): a raised forearm on the
+# pet's outer edge, lifted above the head and swinging between two positions —
+# the same procedural limb as the spear grip, just held high and flicked. From
+# geometry, so a tall pet waves high and a low blob waves low. Body-colored fill
+# (O) with a dark knuckle cap (K), like the spear's gripping paw. swing<0 holds
+# the paw in and low, swing>0 throws it out and up; the goodbye alternates the
+# two. Exports WAVE_TOP so pix_render widens its trim window to the lifted paw.
+WAVE_TOP=0
+pix_apply_wave() { # nameref grid, side (1 right / -1 left), swing (-1/1)
+  local -n WG=$1
+  local side=$2 swing=$3
+  local H=${#WG[@]} W=${#WG[0]} ri c
+  # eye row (the shoulder rides at eye height) and the body's topmost row
+  local eyeRow=-1
+  for ((ri=0; ri<H; ri++)); do
+    if [[ ${WG[ri]} == *KW* || ${WG[ri]} == *WK* ]]; then eyeRow=$ri; break; fi
+  done
+  (( eyeRow < 0 )) && eyeRow=6
+  local top=99
+  for ((ri=0; ri<H; ri++)); do [[ ${WG[ri]} == *[!.]* ]] && { top=$ri; break; }; done
+  (( top > 90 )) && top=0
+  _wvput() { local y=$1 x=$2 lt=$3
+    (( y < 0 || y >= H || x < 0 || x >= W )) && return
+    local s=${WG[y]}; WG[y]="${s:0:x}${lt}${s:x+1}"; }
+  # shoulder: just past the body's own edge on the eye row, so the arm grows
+  # out of the body rather than floating at the grid margin (a tail or frill
+  # that juts further down never drags the shoulder out with it)
+  local sy=$eyeRow shoX=-1 rr=${WG[eyeRow]}
+  if (( side > 0 )); then
+    for ((c=${#rr}-1; c>=0; c--)); do [[ ${rr:c:1} != . ]] && { shoX=$c; break; }; done
+    shoX=$(( shoX + 1 ))
+  else
+    for ((c=0; c<${#rr}; c++)); do [[ ${rr:c:1} != . ]] && { shoX=$c; break; }; done
+    shoX=$(( shoX - 1 ))
+  fi
+  (( shoX < 0 )) && shoX=0; (( shoX > W - 1 )) && shoX=$(( W - 1 ))
+  # the raised paw sits above the head; the +swing beat throws it a column
+  # further out and a row higher — the flick that reads as the wave
+  local tipY=$(( top - 1 + (swing > 0 ? 0 : 1) )); (( tipY < 0 )) && tipY=0
+  local reach=$(( 2 + (swing > 0 ? 1 : 0) ))
+  local tipX=$(( shoX + side * reach ))
+  (( tipX < 0 )) && tipX=0; (( tipX > W - 1 )) && tipX=$(( W - 1 ))
+  # the forearm: a straight limb from shoulder to paw, stepped along the long
+  # axis so it stays connected at every intermediate row
+  local dx=$(( tipX - shoX )) dy=$(( tipY - sy ))
+  local adx=${dx#-} ady=${dy#-} steps x y i
+  steps=$(( adx > ady ? adx : ady )); (( steps == 0 )) && steps=1
+  for ((i=0; i<=steps; i++)); do
+    x=$(( shoX + dx * i / steps )); y=$(( sy + dy * i / steps ))
+    _wvput "$y" "$x" O
+  done
+  # the paw at the tip (two rows tall) with a dark knuckle cap above it
+  _wvput "$tipY" "$tipX" O
+  _wvput $(( tipY + 1 )) "$tipX" O
+  _wvput $(( tipY - 1 )) "$tipX" K
+  WAVE_TOP=$(( tipY - 1 )); (( WAVE_TOP < 0 )) && WAVE_TOP=0
+}
+
 # pix_render id frame blink → PIXOUT[] colored lines, PIXOUT_W cols, PIXOUT_H rows
 # (uses current PC palette; cache key includes it)
 declare -A PIXCACHE PIXCACHE_W PIXCACHE_H
@@ -1118,7 +1184,7 @@ declare -a PIX_GURNEY=(
 )
 
 pix_render() {
-  local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0} reading=${16:-}
+  local id=$1 frame=$2 blink=$3 specs=${4:-0} tired=${5:-0} flip=${6:-0} body=${7:-0} mood=${8:-0} sixp=${9:-0} bigeye=${10:-0} brows=${11:-0} wag=${12:-0} beard=${13:-0} gurney=${14:-0} spear=${15:-0} reading=${16:-} wave=${17:-0}
   # ASCII-era frame names → pixel two-frame names
   case $frame in
     sick) frame=sick_1 ;; celebrate) frame=celebrate_1 ;;
@@ -1129,12 +1195,14 @@ pix_render() {
   [[ $frame == hibernate_* ]] && body=0
   # sick, sleeping and cocooned faces carry their own expression — and none
   # of them stands guard: the spear waits by the door, the book stays shut
-  [[ $frame == sick_* || $frame == sleep_* || $frame == hibernate_* ]] && { mood=0 bigeye=0 brows=0 wag=0 spear=0 reading=""; }
+  [[ $frame == sick_* || $frame == sleep_* || $frame == hibernate_* ]] && { mood=0 bigeye=0 brows=0 wag=0 spear=0 reading="" wave=0; }
+  # a waving paw can't also grip the spear — the goodbye wave wins the arm
+  (( wave != 0 )) && spear=0
   # the cocoon hides the chin too (the beard survives sleep — it's earned)
   [[ $frame == hibernate_* ]] && beard=0
   # dilation and brows are invisible behind elder spectacle rims
   [[ $specs == 1 ]] && bigeye=0 brows=0
-  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$PC_KEY/$PIX_MODE"
+  local ck="$id/$frame/$blink/$specs/$tired/$flip/$body/$mood/$sixp/$bigeye/$brows/$wag/$beard/$gurney/$spear/$reading/$wave/$PC_KEY/$PIX_MODE"
   if [[ -n ${PIXCACHE[$ck]:-} ]]; then
     local IFS=$'\n'; PIXOUT=(${PIXCACHE[$ck]}); unset IFS
     PIXOUT_W=${PIXCACHE_W[$ck]} PIXOUT_H=${PIXCACHE_H[$ck]}
@@ -1160,6 +1228,12 @@ pix_render() {
     # wag (a planted spear doesn't swish), before flip.
     pix_apply_spear g 1 "$(( spear == 2 ? 1 : 0 ))"
   fi
+  if (( wave != 0 )); then
+    # the goodbye wave: a raised paw on the right edge, swung by the sign of
+    # `wave` (pix_apply_wave, from geometry). Placed like the spear so a flip
+    # mirrors it for a facing render; after wag, before flip.
+    pix_apply_wave g 1 "$wave"
+  fi
   if (( flip )); then
     # mirror horizontally (compare view: the friend faces your pet) —
     # per-pixel letters, so reversing each row is the whole transform
@@ -1176,6 +1250,11 @@ pix_render() {
     # widen the window both ways (kept even top / odd bottom for half-blocks)
     (( SPEAR_TOP < r0 )) && { r0=$SPEAR_TOP; (( r0 % 2 )) && r0=$(( r0 - 1 )); (( r0 < 0 )) && r0=0; }
     (( SPEAR_BOT > r1 )) && { r1=$SPEAR_BOT; (( r1 % 2 == 0 )) && r1=$(( r1 + 1 )); (( r1 >= ${#g[@]} )) && r1=$(( ${#g[@]} - 1 )); }
+  fi
+  if (( wave != 0 )); then
+    # the lifted paw rises above the head — widen the window up (kept even for
+    # the half-block pairing) so the wave isn't sliced off at the top
+    (( WAVE_TOP < r0 )) && { r0=$WAVE_TOP; (( r0 % 2 )) && r0=$(( r0 - 1 )); (( r0 < 0 )) && r0=0; }
   fi
   if [[ -n $reading ]] && (( ${READ_BOTTOM:-0} > r1 )); then
     # the held book can hang below a short pet's feet — widen the window down
