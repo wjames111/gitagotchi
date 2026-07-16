@@ -262,11 +262,12 @@ pet_compose() { # assoc_name frame blink faint [flip]
     local body=0
     (( ${P[HUNGER]:-50} < 20 )) && body=-1
     (( ${P[HUNGER]:-50} >= 90 )) && body=1
-    # the mouth follows the mood buckets: content/ecstatic smile, grumpy
-    # and miserable frown, neutral keeps the straight face (§6.5)
-    local moodf=0 mv=${P[MOOD]:-52}
-    (( mv >= 72 )) && moodf=1
-    (( mv <= 32 )) && moodf=-1
+    # the mouth follows overall happiness, not just temper: smile when happy
+    # (≥65 → content/ecstatic), frown when unhappy (<40 → grumpy/miserable),
+    # straight through the middle (§6.5) — a 48 is neither.
+    local moodf=0 hv=${P[HAPPINESS]:-52}
+    (( hv >= 65 )) && moodf=1
+    (( hv < 40 )) && moodf=-1
     # fitness ≥ 80 earns the six-pack (same bar as the idle stretches)
     local sixp=0; (( ${P[FITNESS]:-0} >= 80 )) && sixp=1
     # high energy dilates the eyes: big, black, too awake to blink
@@ -355,7 +356,7 @@ pet_compose() { # assoc_name frame blink faint [flip]
       hibernate_1|hibernate_2) frame=idle_1 ;;
     esac
     local face tint
-    face=$(pick_face "${P[MOOD_BUCKET]:-neutral}" "${P[ENERGY]:-50}" \
+    face=$(pick_face "${P[FACE_BUCKET]:-neutral}" "${P[ENERGY]:-50}" \
       "$([[ $frame == sick ]] && echo 1 || echo 0)" \
       "$([[ $frame == sleep_1 || $frame == sleep_2 ]] && echo 1 || echo 0)" \
       "$([[ $frame == eat_2 ]] && echo 1 || echo 0)" \

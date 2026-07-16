@@ -515,7 +515,7 @@ Draw-time composition, back to front:
 1. base frame     (species file, pure ASCII skeleton, face slot = @@@)
 2. pattern layer  (overlay chars placed on body-interior cells marked in the file)
 3. accessory      (anchored to the species' declared neck/head anchor cell)
-4. face           (3–5 chars substituted into the @@@ slot, from the mood table)
+4. face           (3–5 chars substituted into the @@@ slot, from the face table)
 5. color          (whole sprite tinted with the linguist ANSI color)
 ```
 
@@ -550,8 +550,8 @@ sick                celebrate           hatch_1 (shared w/ onboarding)
 mini:  ≼o≽
 ```
 
-Face slots: `@@@` is replaced per the mood table (§6.5) — e.g. idle+content composes to
-`≼(o‿o)≽`, sleep always forces `-.-`, sick always forces `x.x`, eat_2 forces `>u<`.
+Face slots: `@@@` is replaced per the face table (§6.5) — e.g. idle at high happiness
+composes to `≼(o‿o)≽`, sleep always forces `-.-`, sick always forces `x.x`, eat_2 forces `>u<`.
 The gill crest (`\|/` ↔ `~|~`) is the species' signature two-frame motion.
 
 ### 6.3 Species 2–5 (idle pair + signature frame each)
@@ -622,17 +622,21 @@ solid            spots            stripes          patches
 Tier-A fallbacks: spots `o .`, stripes `= =`, patches `%%`. Pattern chars render one
 shade dimmer than the body color so texture never fights the silhouette.
 
-### 6.5 Face layer (mood × condition)
+### 6.5 Face layer (happiness × condition)
 
-Faces are 3 chars (eyes·mouth·eyes) dropped into the `@@@` slot:
+Faces are 3 chars (eyes·mouth·eyes) dropped into the `@@@` slot. The expression
+tracks **overall happiness**, not mood alone, so the face agrees with the happiness
+number on the same card — a middling pet doesn't beam. Happiness maps to five
+buckets: `≥80` ecstatic, `≥65` content, `40–64` neutral, `25–39` grumpy, `<25`
+miserable (mood still colours the temper insight copy, but no longer drives the mouth):
 
 | Source | Face | Reads as |
 |---|---|---|
-| mood: ecstatic | `^‿^` | beaming |
-| mood: content | `o‿o` | soft smile |
-| mood: neutral | `o.o` | default |
-| mood: grumpy | `ò~ó` | scowl (Tier A `>_<`) |
-| mood: miserable | `;_;` | droop |
+| happiness ≥ 80 | `^‿^` | beaming |
+| happiness ≥ 65 | `o‿o` | soft smile |
+| happiness 40–64 | `o.o` | default (straight) |
+| happiness 25–39 | `ò~ó` | scowl (Tier A `>_<`) |
+| happiness < 25 | `;_;` | droop |
 | energy < 25 (overrides mouth) | `¬.¬` | eye-bags, the frazzle |
 | blink frame (1 tick) | `-.-` | |
 | sleeping | `-.-` | |
@@ -640,8 +644,8 @@ Faces are 3 chars (eyes·mouth·eyes) dropped into the `@@@` slot:
 | eating (forced, eat_2) | `>u<` | chomp |
 | wisdom ≥ 60 | eyes bridge: `o-o` | tiny spectacles, composable with any mouth |
 
-Priority: forced states > energy override > mood. Spectacles compose (`ò-ó` = wise and
-grumpy — a code reviewer).
+Priority: forced states > energy override > happiness. Spectacles compose (`ò-ó` = wise and
+unhappy — a code reviewer).
 
 ### 6.6 Accessory layer (profile facts)
 

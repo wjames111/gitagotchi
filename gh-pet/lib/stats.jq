@@ -207,6 +207,15 @@
 | (($starving | length) > 0 and $happy_raw > 60) as $capbind
 | (if $capbind then $starving[0].key else "" end) as $capped_by
 | (if $capbind then ($starving[0].value | tostring) else "" end) as $capped_val
+# the face reads the WHOLE pet, not just its temper: the mouth tracks overall
+# happiness so a card's smile agrees with the happiness number above it. Bands
+# are built so the middle (~40–64) is a straight face — 48 is neither happy nor
+# sad. Mood still colours the temper copy (§6.5), but no longer drives the mouth.
+| (if   $happiness >= 80 then "ecstatic"
+   elif $happiness >= 65 then "content"
+   elif $happiness >= 40 then "neutral"
+   elif $happiness >= 25 then "grumpy"
+   else "miserable" end) as $face_bucket
 
 # ── life stage (plan.md §2.3) ────────────────────────────────────────────────
 | (if $acct_days < 7 then "egg"
@@ -344,6 +353,7 @@
   "ENERGY=\($energy | tostring | @sh)",
   "MOOD=\($mood.v | tostring | @sh)",
   "MOOD_BUCKET=\($mood.b | @sh)",
+  "FACE_BUCKET=\($face_bucket | @sh)",
   "MOOD_RAW=\($mood_raw | tostring | @sh)",
   "FITNESS=\($fitness | tostring | @sh)",
   "CLEAN=\($clean | tostring | @sh)",
