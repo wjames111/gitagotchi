@@ -29,18 +29,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # once gh-pet is published as a gh extension, this is the whole install;
-      # until then, replace <you> or vendor the gh-pet directory in this repo
-      - name: install gh-pet
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh extension install <you>/gh-pet
-
+      # ubuntu-latest already ships bash 5, jq and curl — the whole runtime.
+      # Clone gitagotchi and run it in place (no install step needed).
       - name: render the pet
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: gh pet badge ${{ github.repository_owner }} > pet.svg
+        run: |
+          git clone --depth 1 https://github.com/wjames111/gitagotchi ~/gitagotchi
+          ~/gitagotchi/gh-pet/gh-pet "${{ github.repository_owner }}" badge > pet.svg
 
       - name: commit if the pet changed
         run: |
