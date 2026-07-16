@@ -395,6 +395,18 @@ DOOOSD
 # vertical trim: drop fully-transparent pixel-row PAIRS of THIS frame, so pets
 # stand on the ground (per-frame: eat frames carry bowl pixels at the bottom,
 # hibernate cocoons are short — bottom-aligning per frame keeps feet grounded).
+# PIX_XS — horizontal scale for the pix_apply_* transforms.
+#
+# Every one of them was authored against the 24-wide grid, in whole pixels: an
+# 8-wide beard, a 10-wide book, a shaft two columns clear of the flank. Quad
+# art is anamorphic — 2× WIDE ONLY, since 48×18 has the same 18 rows as 24×18 —
+# so those x offsets and widths double while every row index stays put. Without
+# this the beard renders at 28% of the body it should cover 57% of, and the
+# spear's shaft comes out half a pixel thin.
+#
+# pix_render sets it from the species' packing before any transform runs.
+PIX_XS=1
+
 # pix_pet_rows: terminal rows a species' sprite will occupy, WITHOUT rendering
 # it — the pet panel has to be sized before the pet is composed (lib/dense.sh).
 # Untrimmed grid height, so it's a stable ceiling rather than a per-frame value:
@@ -873,13 +885,19 @@ pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
   local last=$(( ${#G[@]} - 1 ))
   while (( last > 0 )) && [[ ${G[last]} != *[!.]* ]]; do last=$((last-1)); done
 
-  # mustache: two pixels either side of the mouth, at the anchor row — the
+  # every width and offset here is in the authored 24-wide units; anamorphic
+  # art is twice as wide, so they scale by PIX_XS (rows never do)
+  local xs=${PIX_XS:-1}
+
+  # mustache: a two-pixel run either side of the mouth, at the anchor row — the
   # mouth cells between them stay clear, so the beard rings the mouth
-  local brow x i j
+  local brow x i j k2
   brow=${G[arow]}
-  for x in $((ac - 3)) $((ac - 2)) $((ac + 1)) $((ac + 2)); do
-    (( x < 0 || x >= ${#brow} )) && continue
-    brow="${brow:0:x}B${brow:x+1}"
+  for ((k2=0; k2<2*xs; k2++)); do
+    x=$(( ac - 3*xs + k2 ))                      # left flank
+    (( x >= 0 && x < ${#brow} )) && brow="${brow:0:x}B${brow:x+1}"
+    x=$(( ac + xs + k2 ))                        # right flank
+    (( x >= 0 && x < ${#brow} )) && brow="${brow:0:x}B${brow:x+1}"
   done
   G[arow]=$brow
 
@@ -891,6 +909,9 @@ pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
     2) widths=(8 6 4) ;;
     *) widths=(8 6 4) ;;
   esac
+  if (( xs != 1 )); then
+    local wi; for wi in "${!widths[@]}"; do widths[wi]=$(( widths[wi] * xs )); done
+  fi
   local w bs be
   for ((i=0; i<${#widths[@]}; i++)); do
     w=${widths[i]}
@@ -909,9 +930,11 @@ pix_apply_beard() { # nameref grid, length 1..3 — wisdom's beard, wrapped
     j=$(( arow + 1 + ${#widths[@]} ))
     if (( j <= last )); then
       brow=${G[j]}
-      for x in $((ac - 2)) $((ac + 1)); do
-        (( x < 0 || x >= ${#brow} )) && continue
-        brow="${brow:0:x}B${brow:x+1}"
+      for ((k2=0; k2<xs; k2++)); do             # each fork tine is xs wide
+        x=$(( ac - 2*xs + k2 ))
+        (( x >= 0 && x < ${#brow} )) && brow="${brow:0:x}B${brow:x+1}"
+        x=$(( ac + xs + k2 ))
+        (( x >= 0 && x < ${#brow} )) && brow="${brow:0:x}B${brow:x+1}"
       done
       G[j]=$brow
     fi
@@ -951,21 +974,28 @@ pix_apply_specs() { # nameref to grid array
       *) printf '%s' "$rr" ;;
     esac
   }
+  # the rim is one authored pixel thick — xs columns on anamorphic art, so it
+  # reads as the same line rather than a half-width scratch (PIX_XS)
+  local xs=${PIX_XS:-1}
   # top and bottom rims over each eye's span
   local r c
   for r in $((eyerow - 1)) $((eyerow + 1)); do
     (( r < 0 || r >= ${#G[@]} )) && continue
     row=${G[r]}
-    for ((c = e1s - 1; c <= e1e + 1; c++)); do row=$(_rim "$row" "$c"); done
-    for ((c = e2s - 1; c <= e2e + 1; c++)); do row=$(_rim "$row" "$c"); done
+    for ((c = e1s - xs; c <= e1e + xs; c++)); do row=$(_rim "$row" "$c"); done
+    for ((c = e2s - xs; c <= e2e + xs; c++)); do row=$(_rim "$row" "$c"); done
     G[r]=$row
   done
   # side rims + a thin bridge between the inner rims (eye pixels untouched)
   row=${G[eyerow]}
-  for c in $((e1s - 1)) $((e1e + 1)) $((e2s - 1)) $((e2e + 1)); do
-    case ${row:c:1} in O|S|R|.) row="${row:0:c}K${row:c+1}" ;; esac
+  local k4
+  for ((k4=0; k4<xs; k4++)); do
+    for c in $(( e1s - xs + k4 )) $(( e1e + 1 + k4 )) $(( e2s - xs + k4 )) $(( e2e + 1 + k4 )); do
+      (( c < 0 || c >= ${#row} )) && continue
+      case ${row:c:1} in O|S|R|.) row="${row:0:c}K${row:c+1}" ;; esac
+    done
   done
-  for ((c = e1e + 2; c <= e2s - 2; c++)); do
+  for ((c = e1e + xs + 1; c <= e2s - xs - 1; c++)); do
     case ${row:c:1} in O|S|R|.) row="${row:0:c}K${row:c+1}" ;; esac
   done
   G[eyerow]=$row
@@ -1098,11 +1128,14 @@ pix_apply_reading() { # nameref grid, pageframe (0/1/2)
     RG[rw]="${s:0:cc}${lt}${s:cc+1}"
   }
   # the book: 10 wide, 3 page rows over 1 cover row, centered under the face,
-  # resting near the feet (but never off the bottom of the grid)
-  local bw=10 mid=5 top left row x gx col
+  # resting near the feet (but never off the bottom of the grid). Width and the
+  # spine's offset are authored in 24-wide units and scale with PIX_XS; the row
+  # counts do not — anamorphic art is wider, not taller.
+  local xs=${PIX_XS:-1}
+  local bw=$(( 10 * xs )) mid=$(( 5 * xs )) top left row x gx col
   top=$(( eyeRow + 3 )); (( lowRow - 3 > top )) && top=$(( lowRow - 3 ))
   (( top > H - 4 )) && top=$(( H - 4 ))
-  left=$(( cx - 5 ))
+  left=$(( cx - bw / 2 ))
   # the book's bottom row — pix_render widens its trim window to it, so a
   # short-bodied reader (the caterpillar) doesn't get the book sliced off
   READ_BOTTOM=$(( top + 3 ))
@@ -1110,12 +1143,13 @@ pix_apply_reading() { # nameref grid, pageframe (0/1/2)
   for ((row=0; row<3; row++)); do
     for ((x=0; x<bw; x++)); do
       gx=$(( left + x ))
-      if (( x == mid )); then col=J                       # spine
+      # the spine is xs wide, and the leaves are everything either side of it
+      if (( x >= mid && x < mid + xs )); then col=J       # spine
       elif (( x < mid )); then                            # left leaf (static)
         col=L; (( row == 0 )) && col=Q
       else                                                # right leaf (animates)
-        if [[ $pf == 1 ]] && (( x > mid + 1 && row < 2 )); then continue; fi   # lifting
-        if [[ $pf == 2 ]] && (( x > mid && row < 2 )); then col=Q              # flipping
+        if [[ $pf == 1 ]] && (( x >= mid + 2*xs && row < 2 )); then continue; fi  # lifting
+        if [[ $pf == 2 ]] && (( x >= mid + xs && row < 2 )); then col=Q           # flipping
         else col=L; (( row == 0 )) && col=Q; fi
       fi
       _bkput $((top + row)) "$gx" "$col"
@@ -1164,14 +1198,22 @@ pix_apply_spear() { # nameref grid, side (1 right / -1 left), tap (0/1)
     done
   done
   local dy=0; (( tap )) && dy=1
+  # the shaft, blade and paw are all one authored pixel wide, two clear of the
+  # flank — on anamorphic art each of those is xs columns (PIX_XS)
+  local xs=${PIX_XS:-1}
   local sx groundY tipY
-  if (( side > 0 )); then sx=$(( right + 2 )); (( sx > W - 2 )) && sx=$(( W - 2 ))
-  else sx=$(( left - 2 )); (( sx < 1 )) && sx=1; fi
+  if (( side > 0 )); then sx=$(( right + 2*xs )); (( sx > W - 2*xs )) && sx=$(( W - 2*xs ))
+  else sx=$(( left - 2*xs )); (( sx < xs )) && sx=$xs; fi
   groundY=$(( bot + 1 ))
   tipY=$(( top - 3 )); (( tipY < 0 )) && tipY=0
-  _spput() { local y=$1 x=$2 lt=$3
-    (( y < 0 || y >= H || x < 0 || x >= W )) && return
-    local s=${SG[y]}; SG[y]="${s:0:x}${lt}${s:x+1}"; }
+  _spput() { local y=$1 x=$2 lt=$3 k3 xx
+    (( y < 0 || y >= H )) && return
+    local s=${SG[y]}
+    for ((k3=0; k3<xs; k3++)); do              # one authored px = xs columns
+      xx=$(( x + k3 )); (( xx < 0 || xx >= W )) && continue
+      s="${s:0:xx}${lt}${s:xx+1}"
+    done
+    SG[y]=$s; }
   # shaft below the head — a striped wooden pole down to the feet
   local y wc
   for ((y=tipY + 4; y<=groundY; y++)); do
@@ -1181,24 +1223,24 @@ pix_apply_spear() { # nameref grid, side (1 right / -1 left), tap (0/1)
   # leaf-blade head: point, upper blade, shoulders, neck, then the red binding
   _spput $((tipY + dy)) "$sx" X
   _spput $((tipY + 1 + dy)) "$sx" X
-  _spput $((tipY + 2 + dy)) $((sx - 1)) V; _spput $((tipY + 2 + dy)) "$sx" X; _spput $((tipY + 2 + dy)) $((sx + 1)) V
+  _spput $((tipY + 2 + dy)) $((sx - xs)) V; _spput $((tipY + 2 + dy)) "$sx" X; _spput $((tipY + 2 + dy)) $((sx + xs)) V
   _spput $((tipY + 3 + dy)) "$sx" V
   _spput $((tipY + 4 + dy)) "$sx" T
   # the gripping paw reaches from mid-body out to the shaft
-  local gripY=$(( (eyeRow + bot) / 2 + 1 )) inner=$(( sx - side ))
+  local gripY=$(( (eyeRow + bot) / 2 + 1 )) inner=$(( sx - side*xs ))
   _spput $((gripY + dy)) "$sx" K            # knuckles on the shaft
   _spput $((gripY + dy)) "$inner" K         # paw outline
-  _spput $((gripY + dy)) $(( inner - side )) O   # paw fill = body color
+  _spput $((gripY + dy)) $(( inner - side*xs )) O   # paw fill = body color
   # the determined brow: a dark bar over each eye
   local bc
   for bc in "${eyeCols[@]}"; do
     _spput $((eyeRow - 1)) "$bc" K
-    _spput $((eyeRow - 1)) $((bc + 1)) K
+    _spput $((eyeRow - 1)) $((bc + xs)) K
   done
   # dust puffs when the butt taps the ground
   if (( tap )); then
-    _spput $((groundY + 2)) $((sx - 1)) H
-    _spput $((groundY + 2)) $((sx + 1)) H
+    _spput $((groundY + 2)) $((sx - xs)) H
+    _spput $((groundY + 2)) $((sx + xs)) H
   fi
   SPEAR_TOP=$(( tipY + dy )); SPEAR_BOT=$(( groundY + 2 ))
 }
@@ -1224,9 +1266,17 @@ pix_apply_wave() { # nameref grid, side (1 right / -1 left), swing (-1/1)
   local top=99
   for ((ri=0; ri<H; ri++)); do [[ ${WG[ri]} == *[!.]* ]] && { top=$ri; break; }; done
   (( top > 90 )) && top=0
-  _wvput() { local y=$1 x=$2 lt=$3
-    (( y < 0 || y >= H || x < 0 || x >= W )) && return
-    local s=${WG[y]}; WG[y]="${s:0:x}${lt}${s:x+1}"; }
+  # the arm is one authored pixel thick and reaches a couple of pixels out —
+  # both are xs columns on anamorphic art (PIX_XS)
+  local xs=${PIX_XS:-1}
+  _wvput() { local y=$1 x=$2 lt=$3 k3 xx
+    (( y < 0 || y >= H )) && return
+    local s=${WG[y]}
+    for ((k3=0; k3<xs; k3++)); do
+      xx=$(( x + k3 )); (( xx < 0 || xx >= W )) && continue
+      s="${s:0:xx}${lt}${s:xx+1}"
+    done
+    WG[y]=$s; }
   # shoulder: just past the body's own edge on the eye row, so the arm grows
   # out of the body rather than floating at the grid margin (a tail or frill
   # that juts further down never drags the shoulder out with it)
@@ -1236,15 +1286,15 @@ pix_apply_wave() { # nameref grid, side (1 right / -1 left), swing (-1/1)
     shoX=$(( shoX + 1 ))
   else
     for ((c=0; c<${#rr}; c++)); do [[ ${rr:c:1} != . ]] && { shoX=$c; break; }; done
-    shoX=$(( shoX - 1 ))
+    shoX=$(( shoX - xs ))
   fi
-  (( shoX < 0 )) && shoX=0; (( shoX > W - 1 )) && shoX=$(( W - 1 ))
+  (( shoX < 0 )) && shoX=0; (( shoX > W - xs )) && shoX=$(( W - xs ))
   # the raised paw sits above the head; the +swing beat throws it a column
   # further out and a row higher — the flick that reads as the wave
   local tipY=$(( top - 1 + (swing > 0 ? 0 : 1) )); (( tipY < 0 )) && tipY=0
-  local reach=$(( 2 + (swing > 0 ? 1 : 0) ))
+  local reach=$(( (2 + (swing > 0 ? 1 : 0)) * xs ))
   local tipX=$(( shoX + side * reach ))
-  (( tipX < 0 )) && tipX=0; (( tipX > W - 1 )) && tipX=$(( W - 1 ))
+  (( tipX < 0 )) && tipX=0; (( tipX > W - xs )) && tipX=$(( W - xs ))
   # the forearm: a straight limb from shoulder to paw, stepped along the long
   # axis so it stays connected at every intermediate row
   local dx=$(( tipX - shoX )) dy=$(( tipY - sy ))
@@ -1422,6 +1472,11 @@ pix_render() {
     return
   fi
   local -a g; local IFS=$'\n'; g=(${PIXF[$id/$frame]}); unset IFS
+  # resolve the packing FIRST: PIX_XS scales every transform below, so it has
+  # to be set before the first one touches the grid
+  local pack=${PIXPACK[$id]:-half}
+  [[ $PIX_PACK != auto ]] && pack=$PIX_PACK
+  PIX_XS=1; [[ $pack == quad ]] && PIX_XS=2
   (( body != 0 )) && pix_apply_body g "$body"
   EYE_ROW=-1
   [[ $tired == 1 || $bigeye == 1 || $brows == 1 || $beard != 0 ]] && pix_find_eyes g
@@ -1530,8 +1585,6 @@ pix_render() {
   fi
   local w=${#g[0]} y x out line tc bc t b
   PIXOUT=()
-  local pack=${PIXPACK[$id]:-half}
-  [[ $PIX_PACK != auto ]] && pack=$PIX_PACK
   if [[ $pack == quad ]]; then
     # blink rewrites eye letters, so apply it to the grid BEFORE blocks are cut
     if [[ $blink == 1 ]]; then
