@@ -23,18 +23,3 @@ jobs:
         run: brew install bash jq
       - name: run the offline suite
         run: gh-pet/tests/run.sh
-      # temporary diagnostics: the suite fails on the runners but passes
-      # locally under every env we can simulate — dump the actual frames
-      - name: debug on failure
-        if: failure()
-        run: |
-          echo "── env"; date -u; jq --version; bash --version | head -1
-          locale -a 2>/dev/null | grep -i 'en_US' || echo "no en_US locale"
-          cd gh-pet/tests && ./make_fixtures.sh fixtures >/dev/null && cd ..
-          export XDG_CACHE_HOME=$(mktemp -d) LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
-          echo "── cozy well-fed"; ./gh-pet --fixtures tests/fixtures --snapshot --cozy
-          echo "── cozy starving"; ./gh-pet --fixtures tests/fixtures-starving --snapshot --cozy
-          echo "── derived state (starving)"
-          find "$XDG_CACHE_HOME" -name state.env -path '*starving*' -exec cat {} + 2>/dev/null
-          find "$XDG_CACHE_HOME" -name state.env -exec cat {} + | sort -u
-          echo "── dense"; ./gh-pet --fixtures tests/fixtures --snapshot

@@ -104,12 +104,16 @@ search_q() { # raw query → encoded
 
 # GraphQL contribution calendar (plan.md §7 — token required; public data of friends OK)
 gql_calendar() { # login ttl
-  [[ -z $TOKEN ]] && return 0
   local login=$1 ttl=$2; local dir="$CACHE_ROOT/$login"; mkdir -p "$dir"
   local body="$dir/calendar.json"
+  # fixtures are hermetic: they load whether or not a token exists — the
+  # token gate below is for the network, and it must come after this (an
+  # unauthenticated machine once skipped the fixture calendar here, so CI
+  # derived events-sourced stats while every authed laptop passed)
   if [[ -n ${FIXDIR:-} ]]; then
     [[ -r "$FIXDIR/calendar.json" ]] && cp "$FIXDIR/calendar.json" "$body"; return 0
   fi
+  [[ -z $TOKEN ]] && return 0
   if [[ -f $body ]]; then
     local age=$(( $(date +%s) - $(mtime "$body") ))
     (( age < ttl )) && return 0
