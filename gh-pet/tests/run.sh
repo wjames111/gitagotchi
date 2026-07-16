@@ -141,6 +141,48 @@ SNAPB=$(GITAGOTCHI_PRETEND_WISDOM=95 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COL
 assert_contains "$SNAPB" "226;208;160" "sage pet wears the beard in its own shade (platinum)"
 SNAPB2=$(GITAGOTCHI_PRETEND_WISDOM=10 COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 if grep -qF "226;208;160" <<<"$SNAPB2"; then fail "low wisdom stays clean-shaven"; else ok "low wisdom stays clean-shaven"; fi
+
+# The beard hunts for the face — the mouth is "the first KK+ run below the
+# eyes" — so it MUST read a pristine grid. An elder's spectacle rim (and a
+# wired pet's dilated pupil) paint fresh K's directly under the eyes, and the
+# hunt used to lock onto the left lens: the beard grew off the glasses, a row
+# high and hanging past the side of the face. The fixture pet is an adult
+# caterpillar, so no snapshot reaches this pairing — pin it directly.
+# Drives the REAL pix_render, so the ordering of its transform calls is what's
+# under test (asserting on pix_apply_beard alone would pass even if the anchor
+# hunt drifted back below pix_apply_specs).
+BEARDA=$(
+  BASE_DIR="$ROOT/lib" SPRITE_DIR="$ROOT/sprites"
+  source "$ROOT/lib/util.sh" 2>/dev/null; source "$ROOT/lib/pixel.sh" 2>/dev/null
+  pix_db_load
+  PIX_MODE=T PIX_CAPTURE=1 PIX_BEARD_RGB="226;208;160"
+  #           id  frame  blink specs tired flip body mood sixp bigeye brows wag beard …
+  for specs in 0 1; do
+    pix_palette cat "#3178c6" 0
+    pix_render cat idle_1 0 "$specs" 0 0 0 0 0 0 0 0 2 0 0 "" 0
+    printf "specs$specs %s\n" "${PIXGRID[@]}"   # tag every row with its case
+  done
+)
+# the mouth-anchored beard: an 8-wide run centred under the cat's chin, the
+# body's D rim still intact on both flanks. Asserted per-case — untagged, the
+# adult's good row satisfies the grep and the elder's breakage sails through.
+assert_contains "$BEARDA" "specs0 .....DOOBBBBBBBBOOD....." "beard hangs off the adult's mouth, centred"
+assert_contains "$BEARDA" "specs1 .....DOOBBBBBBBBOOD....." "the elder's beard hangs in the very same place"
+# the left-lens beard: shoved 4px left, spilling out over the body outline
+if grep -qF "BBBBBBBBKOOOROD" <<<"$BEARDA"; then
+  fail "beard ignores the elder's spectacle rim (not the left lens)"
+else
+  ok "beard ignores the elder's spectacle rim (not the left lens)"
+fi
+# and the glasses still get drawn — the fix must not cost the elder its specs
+assert_contains "$BEARDA" "DKKWKKKKKKKWKD" "the bespectacled elder still wears its glasses"
+
+# the beard is earned: a guest turning up must not shave the host. Everyone
+# shrinks to half scale while hosting, and the shrink used to drop it.
+SNAPH=$(GITAGOTCHI_PRETEND_WISDOM=95 GITAGOTCHI_PRETEND_VISITORS="octotest" \
+  COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 \
+  "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
+assert_contains "$SNAPH" "226;208;160" "a hosting pet keeps the beard it earned (half scale)"
 echo "· curiosity (≥75): the pet holds and reads a book (gitagotchi-reading.html)"
 SNAPBK=$(GITAGOTCHI_PRETEND_VIG=books COLORTERM=truecolor GITAGOTCHI_SNAPSHOT_COLOR=1 "$ROOT/gh-pet" --fixtures fixtures --snapshot --dense 2>&1)
 assert_contains "$SNAPBK" "47;95;176"   "reading: the held book's blue cover renders"

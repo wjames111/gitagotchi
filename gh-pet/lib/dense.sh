@@ -694,9 +694,11 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
   [[ $self == 1 && $VIG_CUR == books && $ANIM_STATE == idle ]] && (( ! hosting )) && PET_READING=1
   pet_compose "$1" "$ANIM_FRAME" "$ANIM_BLINK" "$faint"
   local reading_on=$PET_READING; PET_READING=""
-  # company's over: everyone shrinks to half scale so the party always fits
+  # company's over: everyone shrinks to half scale so the party always fits.
+  # pet_compose just sized and gated this pet's beard (PET_BEARD) — hand it
+  # over so the host keeps it: guests shouldn't shave the elder they came to see
   if (( hosting )) && \
-     pix_render_half "${P[SPECIES]}" "${P[COLOR_HEX]:-#dea584}" "$ANIM_FRAME"; then
+     pix_render_half "${P[SPECIES]}" "${P[COLOR_HEX]:-#dea584}" "$ANIM_FRAME" "${PET_BEARD:-0}"; then
     PET_LINES=("${PIXH[@]}"); PET_W=12; PET_H=${#PIXH[@]}
   fi
   local petx=$(( pix0 + (piw - PET_W) / 2 + PET_XOFF ))
@@ -783,6 +785,9 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       done
     fi
     local mainw=$PET_W mainh=$PET_H
+    # each guest dyes PIX_BEARD_RGB its own shade below; hand the host's back
+    # afterwards so the next render off this palette isn't wearing a visitor's
+    local vbrgb_host=${PIX_BEARD_RGB:-}
     # gaps compress before anyone is turned away (sprites carry their own
     # transparent margins, so touching still reads as spaced)
     local vgap=2 vn=${#vlog[@]}
@@ -803,7 +808,15 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       if [[ -n ${VPQ[SPECIES]:-} ]]; then
         local vframe="idle_$(( (TICK / 3 + vi2) % 2 + 1 ))"
         [[ ${VPQ[HIB]:-0} == 1 ]] && vframe="hibernate_$(( (TICK / 6) % 2 + 1 ))"
-        if pix_render_half "${VPQ[SPECIES]}" "${VPQ[COLOR_HEX]:-#dea584}" "$vframe"; then
+        # guests bring their own beards: sized and gated by the same resolvers
+        # pet_compose uses, dyed from their own identity shade (pet_compose
+        # never runs for a visitor, so PIX_BEARD_RGB would still be the host's)
+        gate_expr "$vframe"
+        beard_tier "${VPQ[WISDOM]:-0}"
+        local vbeard=$BEARD_TIER
+        (( GATE_BEARD )) || vbeard=0
+        PIX_BEARD_RGB=${VPQ[BEARD_RGB]:-}
+        if pix_render_half "${VPQ[SPECIES]}" "${VPQ[COLOR_HEX]:-#dea584}" "$vframe" "$vbeard"; then
           local vw=12 vh=${#PIXH[@]}
           local vpx=-1
           if (( vrcur + vw <= pw - 2 )); then
@@ -852,6 +865,7 @@ draw_dense() { # assoc_name self(1) — friends get the same panels from their
       fi
     done
     PET_W=$mainw PET_H=$mainh
+    PIX_BEARD_RGB=$vbrgb_host
   fi
   fi
 

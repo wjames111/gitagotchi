@@ -230,6 +230,19 @@ gate_expr() {
   esac
 }
 
+# beard_tier <wisdom> → BEARD_TIER (0 none · 1 stubble at 40 · 2 trimmed at 70 ·
+# 3 full sage at 90). Its own resolver because two renderers size the same beard:
+# pet_compose for the full sprite, and the half-scale cameo when the pet is
+# hosting. Duplicating the thresholds is exactly the drift §8.4 was written
+# against — the beard is earned, so it must read identically at both scales.
+beard_tier() {
+  local wv=${1:-0}
+  BEARD_TIER=0
+  (( wv >= 40 )) && BEARD_TIER=1
+  (( wv >= 70 )) && BEARD_TIER=2
+  (( wv >= 90 )) && BEARD_TIER=3
+}
+
 # gate_props <anim_state> <stage> → GATE_PROPS / GATE_HOST (draw-layer layers,
 # consumed by draw_dense / draw_main). PROPS = the ambient floor vignettes (ball,
 # flies, window, belly): idle only, and never in the egg (the egg owns the whole
@@ -277,11 +290,10 @@ pet_compose() { # assoc_name frame blink faint [flip]
     # high social wags the tail: appendages swish on the odd half-second beat
     local wag=0
     (( ${P[SOCIAL]:-0} >= 70 )) && wag=$(( ${TICK:-0} / 2 % 2 ))
-    # wisdom grows the beard: stubble at 40, trimmed at 70, full sage at 90
-    local beard=0 wv=${P[WISDOM]:-0}
-    (( wv >= 40 )) && beard=1
-    (( wv >= 70 )) && beard=2
-    (( wv >= 90 )) && beard=3
+    # wisdom grows the beard (beard_tier, below — the half-scale cameo sizes
+    # its beard from the same resolver)
+    beard_tier "${P[WISDOM]:-0}"
+    local beard=$BEARD_TIER
     # critical health (< 15) rolls the sick pet in on a stretcher — with an
     # entrance: the empty gurney wheels in from the right (7 beats), parks
     # under the patient, and the pet hops aboard (3 beats). The pet stays
@@ -356,6 +368,9 @@ pet_compose() { # assoc_name frame blink faint [flip]
     # friend and compare renders never inherit it.
     local wave=0
     [[ $frame == idle_* && ${PET_WAVE:-0} != 0 ]] && wave=${PET_WAVE}
+    # the gated tier, for a caller that re-renders this pet at half scale to
+    # host guests: the beard is earned and survives the shrink (draw_dense)
+    PET_BEARD=$beard
     pix_render "${P[SPECIES]}" "$frame" "$blink" "$specs" "$tired" "$flip" "$body" "$moodf" "$sixp" "$bigeye" "$brows" "$wag" "$beard" "$gurney" "$spearh" "$reading" "$wave"
     PET_LINES=("${PIXOUT[@]}"); PET_W=$PIXOUT_W PET_H=$PIXOUT_H
   else
